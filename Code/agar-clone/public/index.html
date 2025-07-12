@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agar Clone</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 1px solid #555; background-color: #333; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game settings
+        const MAP_WIDTH = 4000;
+        const MAP_HEIGHT = 4000;
+        const INITIAL_PLAYER_RADIUS = 20;
+        const FOOD_COUNT = 200; // Number of food circles
+        const FOOD_RADIUS = 10;
+        const PLAYER_MAX_SPEED = 8; // Max speed for player
+        const INERTIA_FACTOR = 0.1; // How quickly player accelerates/decelerates (0 to 1)
+
+        const CPU_PLAYER_COUNT = 10; // Number of CPU players
+        const INITIAL_CPU_RADIUS = 25;
+        const CPU_SPEED = 3;
+
+        let player = {
+            x: MAP_WIDTH / 2,
+            y: MAP_HEIGHT / 2,
+            radius: INITIAL_PLAYER_RADIUS,
+            color: 'blue',
+            vx: 0, // Current velocity x
+            vy: 0, // Current velocity y
+            targetVx: 0, // Target velocity x based on input
+            targetVy: 0  // Target velocity y based on input
+        };
+
+        let foods = [];
+        let cpuPlayers = [];
+
+        // Mini-map settings
+        const MINIMAP_WIDTH = 200;
+        const MINIMAP_HEIGHT = 200;
+        const MINIMAP_MARGIN = 20;
+
+        // Resize canvas to fit window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); // Initial resize
+
+        // Generate food circles
+        function generateFood() {
+            foods = [];
+            for (let i = 0; i < FOOD_COUNT; i++) {
+                foods.push({
+                    x: Math.random() * MAP_WIDTH,
+                    y: Math.random() * MAP_HEIGHT,
+                    radius: FOOD_RADIUS,
+                    color: `hsl(${Math.random() * 360}, 70%, 50%)`
+                });
+            }
+        }
+        generateFood();
+
+        // Generate CPU players
+        function generateCpuPlayers() {
+            cpuPlayers = [];
+            for (let i = 0; i < CPU_PLAYER_COUNT; i++) {
+                cpuPlayers.push({
+                    x: Math.random() * MAP_WIDTH,
+                    y: Math.random() * MAP_HEIGHT,
+                    radius: INITIAL_CPU_RADIUS + Math.random() * 10, // Slightly varied sizes
+                    color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                    vx: (Math.random() - 0.5) * CPU_SPEED,
+                    vy: (Math.random() - 0.5) * CPU_SPEED
+                });
+            }
+        }
+        generateCpuPlayers();
+
+        // Keyboard input
+        let keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        function updatePlayerMovement() {
+            player.targetVx = 0;
+            player.targetVy = 0;
+
+            if (keys['KeyW']) player.targetVy = -PLAYER_MAX_SPEED;
+            if (keys['KeyS']) player.targetVy = PLAYER_MAX_SPEED;
+            if (keys['KeyA']) player.targetVx = -PLAYER_MAX_SPEED;
+            if (keys['KeyD']) player.targetVx = PLAYER_MAX_SPEED;
+
+            // Normalize diagonal movement for target velocity
+            if (player.targetVx !== 0 && player.targetVy !== 0) {
+                const magnitude = Math.sqrt(player.targetVx * player.targetVx + player.targetVy * player.targetVy);
+                player.targetVx = (player.targetVx / magnitude) * PLAYER_MAX_SPEED;
+                player.targetVy = (player.targetVy / magnitude) * PLAYER_MAX_SPEED;
+            }
+
+            // Apply inertia to current velocity
+            player.vx += (player.targetVx - player.vx) * INERTIA_FACTOR;
+            player.vy += (player.targetVy - player.vy) * INERTIA_FACTOR;
+
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Keep player within map bounds
+            player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
+        }
+
+        function updateCpuPlayersMovement() {
+            cpuPlayers.forEach(cpu => {
+                // Simple random movement for now
+                cpu.x += cpu.vx;
+                cpu.y += cpu.vy;
+
+                // Bounce off walls
+                if (cpu.x - cpu.radius < 0 || cpu.x + cpu.radius > MAP_WIDTH) {
+                    cpu.vx *= -1;
+                }
+                if (cpu.y - cpu.radius < 0 || cpu.y + cpu.radius > MAP_HEIGHT) {
+                    cpu.vy *= -1;
+                }
+
+                // Keep CPU within map bounds
+                cpu.x = Math.max(cpu.radius, Math.min(MAP_WIDTH - cpu.radius, cpu.x));
+                cpu.y = Math.max(cpu.radius, Math.min(MAP_HEIGHT - cpu.radius, cpu.y));
+            });
+        }
+
+        // Generic collision check function
+        function checkCircleCollision(circle1, circle2) {
+            const distance = Math.sqrt(Math.pow(circle1.x - circle2.x, 2) + Math.pow(circle1.y - circle2.y, 2));
+            return distance < circle1.radius + circle2.radius;
+        }
+
+        // Eating logic
+        function eatCircle(eater, eaten) {
+            eater.radius = Math.sqrt(eater.radius * eater.radius + eaten.radius * eaten.radius);
+        }
+
+        function handleCollisions() {
+            // Player vs. Food
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
+                if (checkCircleCollision(player, food) && player.radius > food.radius) {
+                    eatCircle(player, food);
+                    foods.splice(i, 1);
+                    // Regenerate food
+                    foods.push({
+                        x: Math.random() * MAP_WIDTH,
+                        y: Math.random() * MAP_HEIGHT,
+                        radius: FOOD_RADIUS,
+                        color: `hsl(${Math.random() * 360}, 70%, 50%)`
+                    });
+                }
+            }
+
+            // Player vs. CPU Players
+            for (let i = cpuPlayers.length - 1; i >= 0; i--) {
+                const cpu = cpuPlayers[i];
+                if (checkCircleCollision(player, cpu)) {
+                    if (player.radius > cpu.radius * 1.1) { // Player eats CPU if significantly larger
+                        eatCircle(player, cpu);
+                        cpuPlayers.splice(i, 1);
+                        // Regenerate CPU player
+                        cpuPlayers.push({
+                            x: Math.random() * MAP_WIDTH,
+                            y: Math.random() * MAP_HEIGHT,
+                            radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+                            color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                            vx: (Math.random() - 0.5) * CPU_SPEED,
+                            vy: (Math.random() - 0.5) * CPU_SPEED
+                        });
+                    } else if (cpu.radius > player.radius * 1.1) { // CPU eats player
+                        // Game over for player (for now, just reset player)
+                        player.x = MAP_WIDTH / 2;
+                        player.y = MAP_HEIGHT / 2;
+                        player.radius = INITIAL_PLAYER_RADIUS;
+                        player.vx = 0;
+                        player.vy = 0;
+                        console.log("Game Over!");
+                    }
+                }
+            }
+
+            // CPU Players vs. Food
+            cpuPlayers.forEach(cpu => {
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    const food = foods[i];
+                    if (checkCircleCollision(cpu, food) && cpu.radius > food.radius) {
+                        eatCircle(cpu, food);
+                        foods.splice(i, 1);
+                        // Regenerate food
+                        foods.push({
+                            x: Math.random() * MAP_WIDTH,
+                            y: Math.random() * MAP_HEIGHT,
+                            radius: FOOD_RADIUS,
+                            color: `hsl(${Math.random() * 360}, 70%, 50%)`
+                        });
+                    }
+                }
+            });
+
+            // CPU Players vs. CPU Players
+            for (let i = cpuPlayers.length - 1; i >= 0; i--) {
+                const cpu1 = cpuPlayers[i];
+                for (let j = cpuPlayers.length - 1; j >= 0; j--) {
+                    const cpu2 = cpuPlayers[j];
+                    if (i === j) continue; // Don't check collision with self
+
+                    if (checkCircleCollision(cpu1, cpu2)) {
+                        if (cpu1.radius > cpu2.radius * 1.1) { // cpu1 eats cpu2
+                            eatCircle(cpu1, cpu2);
+                            cpuPlayers.splice(j, 1);
+                            // Regenerate cpu2
+                            cpuPlayers.push({
+                                x: Math.random() * MAP_WIDTH,
+                                y: Math.random() * MAP_HEIGHT,
+                                radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+                                color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                                vx: (Math.random() - 0.5) * CPU_SPEED,
+                                vy: (Math.random() - 0.5) * CPU_SPEED
+                            });
+                        } else if (cpu2.radius > cpu1.radius * 1.1) { // cpu2 eats cpu1
+                            eatCircle(cpu2, cpu1);
+                            cpuPlayers.splice(i, 1);
+                            // Regenerate cpu1
+                            cpuPlayers.push({
+                                x: Math.random() * MAP_WIDTH,
+                                y: Math.random() * MAP_HEIGHT,
+                                radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+                                color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                                vx: (Math.random() - 0.5) * CPU_SPEED,
+                                vy: (Math.random() - 0.5) * CPU_SPEED
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Game update logic
+        function update() {
+            updatePlayerMovement();
+            updateCpuPlayersMovement();
+            handleCollisions();
+        }
+
+        // Drawing logic
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate camera offset to keep player centered
+            const offsetX = canvas.width / 2 - player.x;
+            const offsetY = canvas.height / 2 - player.y;
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY); // Apply camera translation
+
+            // Draw map grid (optional, for visual reference)
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < MAP_WIDTH; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, MAP_HEIGHT);
+                ctx.stroke();
+            }
+            for (let y = 0; y < MAP_HEIGHT; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(MAP_WIDTH, y);
+                ctx.stroke();
+            }
+
+
+            // Draw food circles
+            foods.forEach(food => {
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
+                ctx.fillStyle = food.color;
+                ctx.fill();
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            });
+
+            // Draw CPU players
+            cpuPlayers.forEach(cpu => {
+                ctx.beginPath();
+                ctx.arc(cpu.x, cpu.y, cpu.radius, 0, Math.PI * 2);
+                ctx.fillStyle = cpu.color;
+                ctx.fill();
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = `${cpu.radius * 0.4}px Arial`;
+                ctx.fillText('CPU', cpu.x, cpu.y);
+            });
+
+            // Draw player circle
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.color;
+            ctx.fill();
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw player name/size (optional)
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `${player.radius * 0.5}px Arial`;
+            ctx.fillText('Player', player.x, player.y);
+
+
+            ctx.restore(); // Restore canvas state
+
+            // --- Draw Mini-map ---
+            ctx.save();
+            ctx.translate(canvas.width - MINIMAP_WIDTH - MINIMAP_MARGIN, MINIMAP_MARGIN); // Position mini-map
+
+            // Mini-map background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+
+            // Scale factors for mini-map
+            const scaleX = MINIMAP_WIDTH / MAP_WIDTH;
+            const scaleY = MINIMAP_HEIGHT / MAP_HEIGHT;
+
+            // Draw food on mini-map
+            foods.forEach(food => {
+                ctx.beginPath();
+                ctx.arc(food.x * scaleX, food.y * scaleY, food.radius * scaleX, 0, Math.PI * 2);
+                ctx.fillStyle = food.color;
+                ctx.fill();
+            });
+
+            // Draw CPU players on mini-map
+            cpuPlayers.forEach(cpu => {
+                ctx.beginPath();
+                ctx.arc(cpu.x * scaleX, cpu.y * scaleY, cpu.radius * scaleX, 0, Math.PI * 2);
+                ctx.fillStyle = cpu.color;
+                ctx.fill();
+            });
+
+            // Draw player on mini-map
+            ctx.beginPath();
+            ctx.arc(player.x * scaleX, player.y * scaleY, player.radius * scaleX, 0, Math.PI * 2);
+            ctx.fillStyle = player.color;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+
+            ctx.restore(); // Restore canvas state after drawing mini-map
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop(); // Start the game
+    </script>
+</body>
+</html>
