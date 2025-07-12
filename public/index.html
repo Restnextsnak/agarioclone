@@ -5,48 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agar Clone</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        body { margin: 0; overflow: hidden; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif; }
         canvas { border: 1px solid #555; background-color: #333; }
+        #nameScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 100; }
+        #nameScreen input { padding: 10px; font-size: 1.2em; border: none; border-radius: 5px; margin-bottom: 10px; text-align: center; }
+        #nameScreen button { padding: 10px 20px; font-size: 1.2em; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #nameScreen button:hover { background-color: #45a049; }
+        #joystick-container { position: absolute; bottom: 20px; left: 20px; width: 150px; height: 150px; background-color: rgba(255, 255, 255, 0.2); border-radius: 50%; display: none; /* Hidden by default */ }
+        #joystick { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; background-color: rgba(255, 255, 255, 0.5); border-radius: 50%; }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="nameScreen">
+        <h1>Enter Your Name</h1>
+        <input type="text" id="playerNameInput" placeholder="Your Name">
+        <button id="playButton">Play</button>
+    </div>
+    <div id="joystick-container">
+        <div id="joystick"></div>
+    </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
+        const socket = io();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const nameScreen = document.getElementById('nameScreen');
+        const playerNameInput = document.getElementById('playerNameInput');
+        const playButton = document.getElementById('playButton');
+        const joystickContainer = document.getElementById('joystick-container');
+        const joystick = document.getElementById('joystick');
 
-        // Game settings
-        const MAP_WIDTH = 4000;
-        const MAP_HEIGHT = 4000;
-        const INITIAL_PLAYER_RADIUS = 20;
-        const FOOD_COUNT = 200; // Number of food circles
-        const FOOD_RADIUS = 10;
-        const PLAYER_MAX_SPEED = 8; // Max speed for player
-        const INERTIA_FACTOR = 0.1; // How quickly player accelerates/decelerates (0 to 1)
+        let currentPlayer = null;
+        let allPlayers = {};
+        let allFood = [];
 
-        const CPU_PLAYER_COUNT = 10; // Number of CPU players
-        const INITIAL_CPU_RADIUS = 25;
-        const CPU_SPEED = 3;
-
-        let player = {
-            x: MAP_WIDTH / 2,
-            y: MAP_HEIGHT / 2,
-            radius: INITIAL_PLAYER_RADIUS,
-            color: 'blue',
-            vx: 0, // Current velocity x
-            vy: 0, // Current velocity y
-            targetVx: 0, // Target velocity x based on input
-            targetVy: 0  // Target velocity y based on input
-        };
-
-        let foods = [];
-        let cpuPlayers = [];
-
-        // Mini-map settings
-        const MINIMAP_WIDTH = 200;
-        const MINIMAP_HEIGHT = 200;
-        const MINIMAP_MARGIN = 20;
+        const MAP_SIZE = 2000; // Should match server's MAP_SIZE
 
         // Resize canvas to fit window
         function resizeCanvas() {
@@ -56,327 +51,164 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas(); // Initial resize
 
-        // Generate food circles
-        function generateFood() {
-            foods = [];
-            for (let i = 0; i < FOOD_COUNT; i++) {
-                foods.push({
-                    x: Math.random() * MAP_WIDTH,
-                    y: Math.random() * MAP_HEIGHT,
-                    radius: FOOD_RADIUS,
-                    color: `hsl(${Math.random() * 360}, 70%, 50%)`
-                });
+        // Player Join/Respawn Logic
+        playButton.addEventListener('click', () => {
+            const playerName = playerNameInput.value.trim();
+            if (playerName) {
+                socket.emit('playerJoin', playerName);
+                nameScreen.style.display = 'none';
             }
-        }
-        generateFood();
-
-        // Generate CPU players
-        function generateCpuPlayers() {
-            cpuPlayers = [];
-            for (let i = 0; i < CPU_PLAYER_COUNT; i++) {
-                cpuPlayers.push({
-                    x: Math.random() * MAP_WIDTH,
-                    y: Math.random() * MAP_HEIGHT,
-                    radius: INITIAL_CPU_RADIUS + Math.random() * 10, // Slightly varied sizes
-                    color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-                    vx: (Math.random() - 0.5) * CPU_SPEED,
-                    vy: (Math.random() - 0.5) * CPU_SPEED
-                });
-            }
-        }
-        generateCpuPlayers();
-
-        // Keyboard input
-        let keys = {};
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-        });
-        window.addEventListener('keyup', (e) => {
-            keys[e.code] = false;
         });
 
-        function updatePlayerMovement() {
-            player.targetVx = 0;
-            player.targetVy = 0;
-
-            if (keys['KeyW']) player.targetVy = -PLAYER_MAX_SPEED;
-            if (keys['KeyS']) player.targetVy = PLAYER_MAX_SPEED;
-            if (keys['KeyA']) player.targetVx = -PLAYER_MAX_SPEED;
-            if (keys['KeyD']) player.targetVx = PLAYER_MAX_SPEED;
-
-            // Normalize diagonal movement for target velocity
-            if (player.targetVx !== 0 && player.targetVy !== 0) {
-                const magnitude = Math.sqrt(player.targetVx * player.targetVx + player.targetVy * player.targetVy);
-                player.targetVx = (player.targetVx / magnitude) * PLAYER_MAX_SPEED;
-                player.targetVy = (player.targetVy / magnitude) * PLAYER_MAX_SPEED;
-            }
-
-            // Apply inertia to current velocity
-            player.vx += (player.targetVx - player.vx) * INERTIA_FACTOR;
-            player.vy += (player.targetVy - player.vy) * INERTIA_FACTOR;
-
-            player.x += player.vx;
-            player.y += player.vy;
-
-            // Keep player within map bounds
-            player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
-            player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
-        }
-
-        function updateCpuPlayersMovement() {
-            cpuPlayers.forEach(cpu => {
-                // Simple random movement for now
-                cpu.x += cpu.vx;
-                cpu.y += cpu.vy;
-
-                // Bounce off walls
-                if (cpu.x - cpu.radius < 0 || cpu.x + cpu.radius > MAP_WIDTH) {
-                    cpu.vx *= -1;
+        socket.on('gameState', (gameState) => {
+            allPlayers = {};
+            gameState.players.forEach(p => {
+                allPlayers[p.id] = p;
+                if (p.id === socket.id) {
+                    currentPlayer = p;
                 }
-                if (cpu.y - cpu.radius < 0 || cpu.y + cpu.radius > MAP_HEIGHT) {
-                    cpu.vy *= -1;
-                }
-
-                // Keep CPU within map bounds
-                cpu.x = Math.max(cpu.radius, Math.min(MAP_WIDTH - cpu.radius, cpu.x));
-                cpu.y = Math.max(cpu.radius, Math.min(MAP_HEIGHT - cpu.radius, cpu.y));
             });
-        }
+            allFood = gameState.food;
+        });
 
-        // Generic collision check function
-        function checkCircleCollision(circle1, circle2) {
-            const distance = Math.sqrt(Math.pow(circle1.x - circle2.x, 2) + Math.pow(circle1.y - circle2.y, 2));
-            return distance < circle1.radius + circle2.radius;
-        }
+        socket.on('playerDied', () => {
+            currentPlayer = null;
+            nameScreen.style.display = 'flex';
+            playerNameInput.value = ''; // Clear input for new name
+            alert('You died! Enter a new name to play again.');
+        });
 
-        // Eating logic
-        function eatCircle(eater, eaten) {
-            eater.radius = Math.sqrt(eater.radius * eater.radius + eaten.radius * eaten.radius);
-        }
+        // Mouse movement input
+        let mouseX = 0;
+        let mouseY = 0;
 
-        function handleCollisions() {
-            // Player vs. Food
-            for (let i = foods.length - 1; i >= 0; i--) {
-                const food = foods[i];
-                if (checkCircleCollision(player, food) && player.radius > food.radius) {
-                    eatCircle(player, food);
-                    foods.splice(i, 1);
-                    // Regenerate food
-                    foods.push({
-                        x: Math.random() * MAP_WIDTH,
-                        y: Math.random() * MAP_HEIGHT,
-                        radius: FOOD_RADIUS,
-                        color: `hsl(${Math.random() * 360}, 70%, 50%)`
-                    });
-                }
-            }
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
 
-            // Player vs. CPU Players
-            for (let i = cpuPlayers.length - 1; i >= 0; i--) {
-                const cpu = cpuPlayers[i];
-                if (checkCircleCollision(player, cpu)) {
-                    if (player.radius > cpu.radius * 1.1) { // Player eats CPU if significantly larger
-                        eatCircle(player, cpu);
-                        cpuPlayers.splice(i, 1);
-                        // Regenerate CPU player
-                        cpuPlayers.push({
-                            x: Math.random() * MAP_WIDTH,
-                            y: Math.random() * MAP_HEIGHT,
-                            radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-                            color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-                            vx: (Math.random() - 0.5) * CPU_SPEED,
-                            vy: (Math.random() - 0.5) * CPU_SPEED
-                        });
-                    } else if (cpu.radius > player.radius * 1.1) { // CPU eats player
-                        // Game over for player (for now, just reset player)
-                        player.x = MAP_WIDTH / 2;
-                        player.y = MAP_HEIGHT / 2;
-                        player.radius = INITIAL_PLAYER_RADIUS;
-                        player.vx = 0;
-                        player.vy = 0;
-                        console.log("Game Over!");
-                    }
-                }
-            }
+        // Joystick variables
+        let isDragging = false;
+        let joystickCenterX = 0;
+        let joystickCenterY = 0;
+        let joystickCurrentX = 0;
+        let joystickCurrentY = 0;
 
-            // CPU Players vs. Food
-            cpuPlayers.forEach(cpu => {
-                for (let i = foods.length - 1; i >= 0; i--) {
-                    const food = foods[i];
-                    if (checkCircleCollision(cpu, food) && cpu.radius > food.radius) {
-                        eatCircle(cpu, food);
-                        foods.splice(i, 1);
-                        // Regenerate food
-                        foods.push({
-                            x: Math.random() * MAP_WIDTH,
-                            y: Math.random() * MAP_HEIGHT,
-                            radius: FOOD_RADIUS,
-                            color: `hsl(${Math.random() * 360}, 70%, 50%)`
-                        });
-                    }
+        // Check for mobile device
+        const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+            joystickContainer.style.display = 'block';
+
+            joystickContainer.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                const touch = e.touches[0];
+                joystickCenterX = joystickContainer.offsetLeft + joystickContainer.offsetWidth / 2;
+                joystickCenterY = joystickContainer.offsetTop + joystickContainer.offsetHeight / 2;
+                joystickCurrentX = touch.clientX;
+                joystickCurrentY = touch.clientY;
+                joystick.style.left = `${joystickCurrentX - joystickContainer.offsetLeft}px`;
+                joystick.style.top = `${joystickCurrentY - joystickContainer.offsetTop}px`;
+            });
+
+            joystickContainer.addEventListener('touchmove', (e) => {
+                if (isDragging) {
+                    const touch = e.touches[0];
+                    const dx = touch.clientX - joystickCenterX;
+                    const dy = touch.clientY - joystickCenterY;
+                    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), joystickContainer.offsetWidth / 2);
+                    const angle = Math.atan2(dy, dx);
+
+                    joystickCurrentX = joystickCenterX + Math.cos(angle) * distance;
+                    joystickCurrentY = joystickCenterY + Math.sin(angle) * distance;
+
+                    joystick.style.left = `${joystickCurrentX - joystickContainer.offsetLeft}px`;
+                    joystick.style.top = `${joystickCurrentY - joystickContainer.offsetTop}px`;
+
+                    // Update target for server
+                    mouseX = currentPlayer.x + (joystickCurrentX - joystickCenterX) * 5; // Scale joystick movement
+                    mouseY = currentPlayer.y + (joystickCurrentY - joystickCenterY) * 5; // Scale joystick movement
                 }
             });
 
-            // CPU Players vs. CPU Players
-            for (let i = cpuPlayers.length - 1; i >= 0; i--) {
-                const cpu1 = cpuPlayers[i];
-                for (let j = cpuPlayers.length - 1; j >= 0; j--) {
-                    const cpu2 = cpuPlayers[j];
-                    if (i === j) continue; // Don't check collision with self
-
-                    if (checkCircleCollision(cpu1, cpu2)) {
-                        if (cpu1.radius > cpu2.radius * 1.1) { // cpu1 eats cpu2
-                            eatCircle(cpu1, cpu2);
-                            cpuPlayers.splice(j, 1);
-                            // Regenerate cpu2
-                            cpuPlayers.push({
-                                x: Math.random() * MAP_WIDTH,
-                                y: Math.random() * MAP_HEIGHT,
-                                radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-                                color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-                                vx: (Math.random() - 0.5) * CPU_SPEED,
-                                vy: (Math.random() - 0.5) * CPU_SPEED
-                            });
-                        } else if (cpu2.radius > cpu1.radius * 1.1) { // cpu2 eats cpu1
-                            eatCircle(cpu2, cpu1);
-                            cpuPlayers.splice(i, 1);
-                            // Regenerate cpu1
-                            cpuPlayers.push({
-                                x: Math.random() * MAP_WIDTH,
-                                y: Math.random() * MAP_HEIGHT,
-                                radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-                                color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-                                vx: (Math.random() - 0.5) * CPU_SPEED,
-                                vy: (Math.random() - 0.5) * CPU_SPEED
-                            });
-                        }
-                    }
-                }
-            }
+            joystickContainer.addEventListener('touchend', () => {
+                isDragging = false;
+                joystick.style.left = '50%';
+                joystick.style.top = '50%';
+                mouseX = currentPlayer.x; // Stop movement
+                mouseY = currentPlayer.y; // Stop movement
+            });
         }
 
-        // Game update logic
         function update() {
-            updatePlayerMovement();
-            updateCpuPlayersMovement();
-            handleCollisions();
+            if (currentPlayer) {
+                // Send player input to server
+                socket.emit('playerInput', {
+                    targetX: currentPlayer.x + (mouseX - canvas.width / 2),
+                    targetY: currentPlayer.y + (mouseY - canvas.height / 2)
+                });
+            }
         }
 
-        // Drawing logic
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Calculate camera offset to keep player centered
-            const offsetX = canvas.width / 2 - player.x;
-            const offsetY = canvas.height / 2 - player.y;
+            if (!currentPlayer) {
+                return; // Don't draw if player hasn't joined or died
+            }
 
+            // Dynamic zoom based on player size
+            const zoom = 100 / currentPlayer.radius; // Adjust this factor as needed
             ctx.save();
-            ctx.translate(offsetX, offsetY); // Apply camera translation
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(zoom, zoom);
+            ctx.translate(-currentPlayer.x, -currentPlayer.y);
 
-            // Draw map grid (optional, for visual reference)
+            // Draw map grid
             ctx.strokeStyle = '#444';
-            ctx.lineWidth = 1;
-            for (let x = 0; x < MAP_WIDTH; x += 50) {
+            ctx.lineWidth = 1 / zoom; // Adjust line width with zoom
+            for (let x = -MAP_SIZE / 2; x <= MAP_SIZE / 2; x += 50) {
                 ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, MAP_HEIGHT);
+                ctx.moveTo(x, -MAP_SIZE / 2);
+                ctx.lineTo(x, MAP_SIZE / 2);
                 ctx.stroke();
             }
-            for (let y = 0; y < MAP_HEIGHT; y += 50) {
+            for (let y = -MAP_SIZE / 2; y <= MAP_SIZE / 2; y += 50) {
                 ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(MAP_WIDTH, y);
+                ctx.moveTo(-MAP_SIZE / 2, y);
+                ctx.lineTo(MAP_SIZE / 2, y);
                 ctx.stroke();
             }
-
 
             // Draw food circles
-            foods.forEach(food => {
+            allFood.forEach(food => {
                 ctx.beginPath();
                 ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
                 ctx.fillStyle = food.color;
                 ctx.fill();
                 ctx.strokeStyle = 'black';
-                ctx.lineWidth = 1;
+                ctx.lineWidth = 1 / zoom;
                 ctx.stroke();
             });
 
-            // Draw CPU players
-            cpuPlayers.forEach(cpu => {
+            // Draw other players
+            for (let id in allPlayers) {
+                const p = allPlayers[id];
                 ctx.beginPath();
-                ctx.arc(cpu.x, cpu.y, cpu.radius, 0, Math.PI * 2);
-                ctx.fillStyle = cpu.color;
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
                 ctx.fill();
                 ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2 / zoom;
                 ctx.stroke();
+
                 ctx.fillStyle = 'white';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.font = `${cpu.radius * 0.4}px Arial`;
-                ctx.fillText('CPU', cpu.x, cpu.y);
-            });
-
-            // Draw player circle
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-            ctx.fillStyle = player.color;
-            ctx.fill();
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // Draw player name/size (optional)
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = `${player.radius * 0.5}px Arial`;
-            ctx.fillText('Player', player.x, player.y);
-
+                ctx.font = `${p.radius * 0.4}px Arial`;
+                ctx.fillText(p.name, p.x, p.y);
+            }
 
             ctx.restore(); // Restore canvas state
-
-            // --- Draw Mini-map ---
-            ctx.save();
-            ctx.translate(canvas.width - MINIMAP_WIDTH - MINIMAP_MARGIN, MINIMAP_MARGIN); // Position mini-map
-
-            // Mini-map background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
-
-            // Scale factors for mini-map
-            const scaleX = MINIMAP_WIDTH / MAP_WIDTH;
-            const scaleY = MINIMAP_HEIGHT / MAP_HEIGHT;
-
-            // Draw food on mini-map
-            foods.forEach(food => {
-                ctx.beginPath();
-                ctx.arc(food.x * scaleX, food.y * scaleY, food.radius * scaleX, 0, Math.PI * 2);
-                ctx.fillStyle = food.color;
-                ctx.fill();
-            });
-
-            // Draw CPU players on mini-map
-            cpuPlayers.forEach(cpu => {
-                ctx.beginPath();
-                ctx.arc(cpu.x * scaleX, cpu.y * scaleY, cpu.radius * scaleX, 0, Math.PI * 2);
-                ctx.fillStyle = cpu.color;
-                ctx.fill();
-            });
-
-            // Draw player on mini-map
-            ctx.beginPath();
-            ctx.arc(player.x * scaleX, player.y * scaleY, player.radius * scaleX, 0, Math.PI * 2);
-            ctx.fillStyle = player.color;
-            ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-
-            ctx.restore(); // Restore canvas state after drawing mini-map
         }
 
         // Game loop
