@@ -93,7 +93,7 @@ setInterval(() => {
         const dy = player.targetY - player.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance > 1) { // Prevent jittering when very close to target
+        if (distance > 5) { // Prevent jittering when very close to target
             const angle = Math.atan2(dy, dx);
             // Speed is 2/3 of original speed
             const currentSpeed = (player.speed * (2/3)) / (player.radius / 30); // Slower for larger players
@@ -103,6 +103,10 @@ setInterval(() => {
             player.x = player.targetX;
             player.y = player.targetY;
         }
+
+        // Keep player within map bounds
+        player.x = Math.max(-MAP_SIZE / 2 + player.radius, Math.min(MAP_SIZE / 2 - player.radius, player.x));
+        player.y = Math.max(-MAP_SIZE / 2 + player.radius, Math.min(MAP_SIZE / 2 - player.radius, player.y));
 
         // Handle food consumption
         for (let i = food.length - 1; i >= 0; i--) {

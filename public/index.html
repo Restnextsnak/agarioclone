@@ -83,10 +83,17 @@
         // Mouse movement input
         let mouseX = 0;
         let mouseY = 0;
+        let mouseMoveTimeout;
+        let isMouseMoving = false; // New flag
 
         canvas.addEventListener('mousemove', (e) => {
             mouseX = e.clientX;
             mouseY = e.clientY;
+            isMouseMoving = true; // Mouse is moving
+            clearTimeout(mouseMoveTimeout);
+            mouseMoveTimeout = setTimeout(() => {
+                isMouseMoving = false; // Mouse stopped moving
+            }, 100); // Adjust timeout as needed
         });
 
         // Joystick variables
@@ -143,19 +150,28 @@
 
         function update() {
             if (currentPlayer) {
-                let targetX = currentPlayer.x + (mouseX - canvas.width / 2);
-                let targetY = currentPlayer.y + (mouseY - canvas.height / 2);
+                let targetX, targetY;
 
-                // If mouse is not moving, set target to current player position to stop movement
-                if (Math.abs(mouseX - canvas.width / 2) < 5 && Math.abs(mouseY - canvas.height / 2) < 5 && !isMobile) {
-                    targetX = currentPlayer.x;
-                    targetY = currentPlayer.y;
-                }
-
-                // If on mobile and joystick is not being dragged, stop movement
-                if (isMobile && !isDragging) {
-                    targetX = currentPlayer.x;
-                    targetY = currentPlayer.y;
+                if (isMobile) {
+                    if (isDragging) {
+                        // Joystick is active, calculate target based on joystick
+                        targetX = currentPlayer.x + (joystickCurrentX - joystickCenterX) * 5; // Scale joystick movement
+                        targetY = currentPlayer.y + (joystickCurrentY - joystickCenterY) * 5; // Scale joystick movement
+                    } else {
+                        // Joystick not active, stop movement
+                        targetX = currentPlayer.x;
+                        targetY = currentPlayer.y;
+                    }
+                } else {
+                    // Desktop (mouse input)
+                    if (isMouseMoving) { // Only move if mouse is actively moving
+                        targetX = currentPlayer.x + (mouseX - canvas.width / 2);
+                        targetY = currentPlayer.y + (mouseY - canvas.height / 2);
+                    } else {
+                        // Mouse not moving, stop movement
+                        targetX = currentPlayer.x;
+                        targetY = currentPlayer.y;
+                    }
                 }
 
                 // Send player input to server
@@ -176,7 +192,15 @@
             // Dynamic zoom based on player size
             // Ensure player blob is about 1/10th of the screen height
             const desiredPlayerScreenRadius = canvas.height / 20; // 1/10th of screen height (radius is half diameter)
-            const zoom = desiredPlayerScreenRadius / currentPlayer.radius;
+            let zoom = desiredPlayerScreenRadius / currentPlayer.radius;
+
+            // Calculate maximum zoom-out to ensure map always fills the screen
+            const minZoomForMapWidth = canvas.width / MAP_SIZE;
+            const minZoomForMapHeight = canvas.height / MAP_SIZE;
+            const maxZoomOut = Math.max(minZoomForMapWidth, minZoomForMapHeight); // Use max to ensure both dimensions are covered
+
+            // Apply the maximum zoom-out limit
+            zoom = Math.max(zoom, maxZoomOut);
 
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
