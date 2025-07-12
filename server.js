@@ -12,7 +12,11 @@ app.use(express.static('public'));
 
 let players = {};
 let food = [];
+let cpuPlayers = {}; // Added for CPU players
 const FOOD_COUNT = 100;
+const CPU_PLAYER_COUNT = 10; // Number of CPU players
+const INITIAL_CPU_RADIUS = 25;
+const CPU_SPEED = 3;
 const MAP_SIZE = 2000; // Example map size
 
 // Generate initial food
@@ -27,7 +31,25 @@ function generateFood() {
     }
 }
 
+function generateCpuPlayers() {
+    for (let i = 0; i < CPU_PLAYER_COUNT; i++) {
+        const id = `cpu-${i}`;
+        cpuPlayers[id] = {
+            id: id,
+            name: `CPU-${i}`,
+            x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+            y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+            radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+            color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+            speed: CPU_SPEED,
+            vx: (Math.random() - 0.5) * CPU_SPEED,
+            vy: (Math.random() - 0.5) * CPU_SPEED
+        };
+    }
+}
+
 generateFood();
+generateCpuPlayers();
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
@@ -77,6 +99,9 @@ setInterval(() => {
             const currentSpeed = (player.speed * (2/3)) / (player.radius / 30); // Slower for larger players
             player.x += Math.cos(angle) * Math.min(distance, currentSpeed);
             player.y += Math.sin(angle) * Math.min(distance, currentSpeed);
+        } else {
+            player.x = player.targetX;
+            player.y = player.targetY;
         }
 
         // Handle food consumption
@@ -117,8 +142,116 @@ setInterval(() => {
         }
     }
 
+    // Update CPU player positions and handle collisions
+    for (let id in cpuPlayers) {
+        let cpu = cpuPlayers[id];
+
+        // Simple random movement for CPU players
+        cpu.x += cpu.vx;
+        cpu.y += cpu.vy;
+
+        // Bounce off walls
+        if (cpu.x - cpu.radius < -MAP_SIZE / 2 || cpu.x + cpu.radius > MAP_SIZE / 2) {
+            cpu.vx *= -1;
+        }
+        if (cpu.y - cpu.radius < -MAP_SIZE / 2 || cpu.y + cpu.radius > MAP_SIZE / 2) {
+            cpu.vy *= -1;
+        }
+
+        // Keep CPU within map bounds
+        cpu.x = Math.max(-MAP_SIZE / 2 + cpu.radius, Math.min(MAP_SIZE / 2 - cpu.radius, cpu.x));
+        cpu.y = Math.max(-MAP_SIZE / 2 + cpu.radius, Math.min(MAP_SIZE / 2 - cpu.radius, cpu.y));
+
+        // CPU vs Food
+        for (let i = food.length - 1; i >= 0; i--) {
+            const foodItem = food[i];
+            const dist = Math.sqrt(Math.pow(cpu.x - foodItem.x, 2) + Math.pow(cpu.y - foodItem.y, 2));
+            if (dist < cpu.radius + foodItem.radius) {
+                cpu.radius += 1;
+                food.splice(i, 1);
+                food.push({
+                    x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                    y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                    radius: 10,
+                    color: `hsl(${Math.random() * 360}, 100%, 50%)`
+                });
+            }
+        }
+
+        // CPU vs Players
+        for (let playerId in players) {
+            let player = players[playerId];
+            const dist = Math.sqrt(Math.pow(cpu.x - player.x, 2) + Math.pow(cpu.y - player.y, 2));
+            if (dist < cpu.radius + player.radius) {
+                if (cpu.radius > player.radius * 1.1) {
+                    cpu.radius += player.radius / 2;
+                    io.to(playerId).emit('playerDied');
+                    delete players[playerId];
+                } else if (player.radius > cpu.radius * 1.1) {
+                    player.radius += cpu.radius / 2;
+                    delete cpuPlayers[id];
+                    // Regenerate CPU
+                    const newCpuId = `cpu-${Object.keys(cpuPlayers).length}`;
+                    cpuPlayers[newCpuId] = {
+                        id: newCpuId,
+                        name: `CPU-${Object.keys(cpuPlayers).length}`,
+                        x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                        y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                        radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+                        color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                        speed: CPU_SPEED,
+                        vx: (Math.random() - 0.5) * CPU_SPEED,
+                        vy: (Math.random() - 0.5) * CPU_SPEED
+                    };
+                }
+            }
+        }
+
+        // CPU vs CPU
+        for (let otherCpuId in cpuPlayers) {
+            if (id === otherCpuId) continue;
+            let otherCpu = cpuPlayers[otherCpuId];
+            const dist = Math.sqrt(Math.pow(cpu.x - otherCpu.x, 2) + Math.pow(cpu.y - otherCpu.y, 2));
+            if (dist < cpu.radius + otherCpu.radius) {
+                if (cpu.radius > otherCpu.radius * 1.1) {
+                    cpu.radius += otherCpu.radius / 2;
+                    delete cpuPlayers[otherCpuId];
+                    // Regenerate CPU
+                    const newCpuId = `cpu-${Object.keys(cpuPlayers).length}`;
+                    cpuPlayers[newCpuId] = {
+                        id: newCpuId,
+                        name: `CPU-${Object.keys(cpuPlayers).length}`,
+                        x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                        y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                        radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+                        color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                        speed: CPU_SPEED,
+                        vx: (Math.random() - 0.5) * CPU_SPEED,
+                        vy: (Math.random() - 0.5) * CPU_SPEED
+                    };
+                } else if (otherCpu.radius > cpu.radius * 1.1) {
+                    otherCpu.radius += cpu.radius / 2;
+                    delete cpuPlayers[id];
+                    // Regenerate CPU
+                    const newCpuId = `cpu-${Object.keys(cpuPlayers).length}`;
+                    cpuPlayers[newCpuId] = {
+                        id: newCpuId,
+                        name: `CPU-${Object.keys(cpuPlayers).length}`,
+                        x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                        y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
+                        radius: INITIAL_CPU_RADIUS + Math.random() * 10,
+                        color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                        speed: CPU_SPEED,
+                        vx: (Math.random() - 0.5) * CPU_SPEED,
+                        vy: (Math.random() - 0.5) * CPU_SPEED
+                    };
+                }
+            }
+        }
+    }
+
     // Emit game state to all connected clients
-    io.emit('gameState', { players: Object.values(players), food });
+    io.emit('gameState', { players: Object.values(players), food, cpuPlayers: Object.values(cpuPlayers) });
 }, 1000 / 60); // 60 updates per second
 
 server.listen(PORT, () => {

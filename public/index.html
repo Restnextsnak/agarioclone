@@ -40,6 +40,7 @@
         let currentPlayer = null;
         let allPlayers = {};
         let allFood = [];
+        let allCpuPlayers = []; // Added for CPU players
 
         const MAP_SIZE = 2000; // Should match server's MAP_SIZE
 
@@ -69,6 +70,7 @@
                 }
             });
             allFood = gameState.food;
+            allCpuPlayers = gameState.cpuPlayers; // Receive CPU players
         });
 
         socket.on('playerDied', () => {
@@ -141,10 +143,25 @@
 
         function update() {
             if (currentPlayer) {
+                let targetX = currentPlayer.x + (mouseX - canvas.width / 2);
+                let targetY = currentPlayer.y + (mouseY - canvas.height / 2);
+
+                // If mouse is not moving, set target to current player position to stop movement
+                if (Math.abs(mouseX - canvas.width / 2) < 5 && Math.abs(mouseY - canvas.height / 2) < 5 && !isMobile) {
+                    targetX = currentPlayer.x;
+                    targetY = currentPlayer.y;
+                }
+
+                // If on mobile and joystick is not being dragged, stop movement
+                if (isMobile && !isDragging) {
+                    targetX = currentPlayer.x;
+                    targetY = currentPlayer.y;
+                }
+
                 // Send player input to server
                 socket.emit('playerInput', {
-                    targetX: currentPlayer.x + (mouseX - canvas.width / 2),
-                    targetY: currentPlayer.y + (mouseY - canvas.height / 2)
+                    targetX: targetX,
+                    targetY: targetY
                 });
             }
         }
@@ -157,7 +174,10 @@
             }
 
             // Dynamic zoom based on player size
-            const zoom = 100 / currentPlayer.radius; // Adjust this factor as needed
+            // Ensure player blob is about 1/10th of the screen height
+            const desiredPlayerScreenRadius = canvas.height / 20; // 1/10th of screen height (radius is half diameter)
+            const zoom = desiredPlayerScreenRadius / currentPlayer.radius;
+
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.scale(zoom, zoom);
@@ -190,9 +210,28 @@
                 ctx.stroke();
             });
 
+            // Draw CPU players
+            allCpuPlayers.forEach(cpu => {
+                ctx.beginPath();
+                ctx.arc(cpu.x, cpu.y, cpu.radius, 0, Math.PI * 2);
+                ctx.fillStyle = cpu.color;
+                ctx.fill();
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2 / zoom;
+                ctx.stroke();
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = `${cpu.radius * 0.4}px Arial`;
+                ctx.fillText(cpu.name, cpu.x, cpu.y);
+            });
+
             // Draw other players
             for (let id in allPlayers) {
                 const p = allPlayers[id];
+                // Don't draw current player again
+                if (p.id === socket.id) continue;
+
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 ctx.fillStyle = p.color;
@@ -208,7 +247,71 @@
                 ctx.fillText(p.name, p.x, p.y);
             }
 
+            // Draw current player
+            ctx.beginPath();
+            ctx.arc(currentPlayer.x, currentPlayer.y, currentPlayer.radius, 0, Math.PI * 2);
+            ctx.fillStyle = currentPlayer.color;
+            ctx.fill();
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2 / zoom;
+            ctx.stroke();
+
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `${currentPlayer.radius * 0.5}px Arial`;
+            ctx.fillText(currentPlayer.name, currentPlayer.x, currentPlayer.y);
+
             ctx.restore(); // Restore canvas state
+
+            // --- Draw Mini-map ---
+            const MINIMAP_WIDTH = 200;
+            const MINIMAP_HEIGHT = 200;
+            const MINIMAP_MARGIN = 20;
+
+            ctx.save();
+            ctx.translate(canvas.width - MINIMAP_WIDTH - MINIMAP_MARGIN, MINIMAP_MARGIN); // Position mini-map
+
+            // Mini-map background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+
+            // Scale factors for mini-map
+            const scaleX = MINIMAP_WIDTH / MAP_SIZE;
+            const scaleY = MINIMAP_HEIGHT / MAP_SIZE;
+
+            // Draw food on mini-map
+            allFood.forEach(food => {
+                ctx.beginPath();
+                ctx.arc((food.x + MAP_SIZE / 2) * scaleX, (food.y + MAP_SIZE / 2) * scaleY, food.radius * scaleX, 0, Math.PI * 2);
+                ctx.fillStyle = food.color;
+                ctx.fill();
+            });
+
+            // Draw CPU players on mini-map
+            allCpuPlayers.forEach(cpu => {
+                ctx.beginPath();
+                ctx.arc((cpu.x + MAP_SIZE / 2) * scaleX, (cpu.y + MAP_SIZE / 2) * scaleY, cpu.radius * scaleX, 0, Math.PI * 2);
+                ctx.fillStyle = cpu.color;
+                ctx.fill();
+            });
+
+            // Draw other players on mini-map
+            for (let id in allPlayers) {
+                const p = allPlayers[id];
+                ctx.beginPath();
+                ctx.arc((p.x + MAP_SIZE / 2) * scaleX, (p.y + MAP_SIZE / 2) * scaleY, p.radius * scaleX, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
+            }
+
+            ctx.restore(); // Restore canvas state after drawing mini-map
         }
 
         // Game loop
