@@ -2,262 +2,156 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>멀티 사과 게임 - 배틀</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body {
             font-family: 'Arial', sans-serif;
             background: #ffb347;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; padding: 20px; overflow: hidden; user-select: none;
         }
 
         body.invisible-cursor, body.invisible-cursor * { cursor: none !important; }
 
         .game-container {
-            background: #ffd700;
-            border: 8px solid #8b4513;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            max-width: 1400px;
-            width: 100%;
-            position: relative;
+            background: #ffd700; border: 8px solid #8b4513; border-radius: 10px;
+            padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 1400px; width: 100%; position: relative;
         }
+
+        /* --- 볼륨 컨트롤 --- */
+        .volume-control {
+            margin-top: 20px; display: flex; align-items: center; gap: 10px;
+            background: rgba(255,255,255,0.8); padding: 10px; border-radius: 20px;
+        }
+        .volume-slider { width: 150px; cursor: pointer; }
 
         .game-header {
             background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
-            border: 4px solid #fff;
-            border-radius: 10px;
-            padding: 15px;
-            text-align: center;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            border: 4px solid #fff; border-radius: 10px; padding: 15px;
+            text-align: center; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;
         }
-
-        .game-title {
-            font-size: 32px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 2px 2px 0px #000;
-        }
-
+        .game-title { font-size: 32px; font-weight: bold; color: white; text-shadow: 2px 2px 0px #000; }
         .mode-badge {
-            background: #fff;
-            color: #d84315;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 18px;
-            box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+            background: #fff; color: #d84315; padding: 5px 15px;
+            border-radius: 20px; font-weight: bold; font-size: 18px; box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
         }
 
         .game-main {
-            display: flex;
-            gap: 15px;
-            background: #87ceeb;
-            border: 4px solid #000;
-            padding: 15px;
-            border-radius: 10px;
-            position: relative;
-            align-items: flex-start; /* 사이드바 높이 자연스럽게 */
+            display: flex; gap: 15px; background: #87ceeb; border: 4px solid #000;
+            padding: 15px; border-radius: 10px; position: relative; align-items: flex-start;
         }
 
-        /* 사이드바 */
-        .sidebar {
-            flex: 0 0 240px; /* 너비를 조금 늘려서 미니맵 잘 보이게 */
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+        .sidebar { flex: 0 0 240px; display: flex; flex-direction: column; gap: 10px; }
         
-        /* 플레이어 패널 (미니맵 수정됨) */
         .player-panel {
-            background: white;
-            border: 3px solid #000;
-            border-radius: 5px;
-            padding: 8px;
-            transition: all 0.2s;
-            cursor: pointer;
-            position: relative;
+            background: white; border: 3px solid #000; border-radius: 5px; padding: 8px;
+            transition: all 0.2s; cursor: pointer; position: relative;
         }
-
         .player-panel:hover { transform: scale(1.02); }
-
-        .player-panel.target {
-            border-color: #ff0000;
-            background: #ffebee;
-            box-shadow: 0 0 10px #ff0000;
-        }
-        
+        .player-panel.target { border-color: #ff0000; background: #ffebee; box-shadow: 0 0 10px #ff0000; }
         .player-panel.target::after {
-            content: 'TARGET';
-            position: absolute;
-            top: -10px;
-            right: -5px;
-            background: red;
-            color: white;
-            font-size: 10px;
-            padding: 2px 5px;
-            border-radius: 5px;
-            font-weight: bold;
+            content: 'TARGET'; position: absolute; top: -10px; right: -5px;
+            background: red; color: white; font-size: 10px; padding: 2px 5px; border-radius: 5px; font-weight: bold;
         }
-        
-        .player-panel.dead {
-            background: #555;
-            opacity: 0.7;
-            filter: grayscale(100%);
-            pointer-events: none;
-        }
+        .player-panel.dead { background: #555; opacity: 0.7; filter: grayscale(100%); pointer-events: none; }
 
         .player-info { margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
         .player-name { font-weight: bold; color: #d84315; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;}
         .player-score { font-weight: bold; color: #2e7d32; font-size: 16px; }
 
-        /* --- 수정된 미니 그리드 스타일 --- */
         .player-mini-grid {
-            display: grid;
-            grid-template-columns: repeat(15, 1fr); /* 15칸 가로 */
-            gap: 1px; /* 간격 축소 */
-            margin-top: 5px;
-            width: 100%;
-            /* height: 60px;  <-- 삭제: 높이 제한 해제 */
-            /* overflow: hidden; <-- 삭제: 짤림 방지 */
-            background: #333; /* 배경색 추가로 빈틈 처리 */
-            padding: 1px;
-            border-radius: 2px;
+            display: grid; grid-template-columns: repeat(15, 1fr); gap: 1px;
+            margin-top: 5px; width: 100%; background: #333; padding: 1px; border-radius: 2px;
         }
-
-        .mini-apple {
-            width: 100%;
-            aspect-ratio: 1; /* 정사각형 유지 */
-            background: #ff6b6b;
-            border-radius: 50%; /* 원형 유지 */
-        }
-        
-        .mini-apple.empty { background: #ddd; border-radius: 0; } /* 빈칸은 네모나게 혹은 흐리게 */
-        .mini-apple.special { background: #9c27b0; box-shadow: 0 0 2px #fff; }
+        .mini-apple { width: 100%; aspect-ratio: 1; background: #ff6b6b; border-radius: 50%; }
+        .mini-apple.empty { background: #ddd; border-radius: 0; }
+        .mini-apple.special { background: #9c27b0; }
         .mini-apple.stone { background: #7f8c8d; }
-        /* -------------------------------- */
+        .mini-apple.gold { background: #ffd700; border: 1px solid #fff; }
 
         .game-center { flex: 1; display: flex; flex-direction: column; }
-
         .game-info {
-            background: #ffd93d;
-            border: 3px solid #000;
-            padding: 10px 20px;
-            margin-bottom: 15px;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background: #ffd93d; border: 3px solid #000; padding: 10px 20px;
+            margin-bottom: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;
         }
-
         .info-item { font-size: 24px; font-weight: bold; }
         .my-score { color: #d84315; }
         .timer { color: #1976d2; }
         .timer.urgent { color: red; animation: pulse 1s infinite; }
 
         .grid-wrapper {
-            background: #c8a2c8;
-            border: 4px solid #000;
-            padding: 10px;
-            border-radius: 10px;
-            position: relative;
-            display: flex;
-            justify-content: center;
+            background: #c8a2c8; border: 4px solid #000; padding: 10px;
+            border-radius: 10px; position: relative; display: flex; justify-content: center;
         }
         
         #statusMessage {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 40px;
-            font-weight: bold;
-            color: #ff0000;
-            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
-            pointer-events: none;
-            z-index: 500;
-            display: none;
-            text-align: center;
-            width: 100%;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 40px; font-weight: bold; color: #ff0000;
+            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff; pointer-events: none;
+            z-index: 500; display: none; text-align: center; width: 100%;
         }
 
         .grid-container {
-            display: grid;
-            grid-template-columns: repeat(15, 1fr);
-            gap: 3px;
-            background: #000;
-            padding: 3px;
-            border-radius: 5px;
-            width: fit-content;
+            display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px;
+            background: #000; padding: 3px; border-radius: 5px; width: fit-content;
         }
 
         .apple {
-            width: 40px;
-            height: 40px;
+            width: 40px; height: 40px;
             background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
-            border: 2px solid #fff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            font-weight: bold;
-            color: white;
-            cursor: pointer;
-            user-select: none;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            transition: transform 0.1s;
+            border: 2px solid #fff; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-weight: bold; color: white;
+            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.3); transition: transform 0.1s;
         }
         
         .apple.special {
             background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
-            border-color: #e1bee7;
-            box-shadow: 0 0 10px #9c27b0;
+            border-color: #e1bee7; box-shadow: 0 0 10px #9c27b0;
             animation: glow 1.5s infinite alternate;
+        }
+        
+        .apple.gold {
+            background: linear-gradient(135deg, #ffd700 0%, #fdb931 100%);
+            border-color: #fff8dc; box-shadow: 0 0 15px #ffd700; color: #8b4513;
+            animation: goldGlow 0.8s infinite alternate;
         }
 
         .apple.stone {
-            background: #7f8c8d;
-            border-color: #555;
-            color: #ccc;
-            cursor: not-allowed;
-            transform: scale(0.9);
+            background: #7f8c8d; border-color: #555; color: #ccc;
+            cursor: not-allowed; transform: scale(0.9);
         }
 
         .apple:hover { transform: scale(1.05); }
         .apple.selecting {
             background: linear-gradient(135deg, #ffd93d 0%, #ffb400 100%);
-            border-color: #ff6b35;
-            transform: scale(1.1);
-            z-index: 10;
+            border-color: #ff6b35; transform: scale(1.1); z-index: 10;
+        }
+        
+        /* 힌트 애니메이션 */
+        .apple.hint {
+            border: 3px solid #00ff00 !important;
+            animation: hintBlink 0.5s infinite alternate;
+            z-index: 20;
         }
 
+        body.using-skill .apple { cursor: crosshair !important; }
+        body.using-skill .apple:hover { background: red !important; }
         .apple.empty { background: #ddd; border-color: #999; cursor: default; opacity: 0.3; }
 
         @keyframes glow { from { box-shadow: 0 0 5px #9c27b0; } to { box-shadow: 0 0 20px #9c27b0; } }
+        @keyframes goldGlow { from { transform: scale(1); box-shadow: 0 0 5px #ffd700; } to { transform: scale(1.05); box-shadow: 0 0 20px #ffeb3b; } }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-        
+        @keyframes hintBlink { from { border-color: #00ff00; transform: scale(1); } to { border-color: #fff; transform: scale(1.1); } }
+
         .flying-apple {
-            position: fixed;
-            width: 40px;
-            height: 40px;
+            position: fixed; width: 40px; height: 40px;
             background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
-            border: 2px solid #fff;
-            border-radius: 50%;
-            z-index: 9999;
-            pointer-events: none;
-            transition: all 0.8s ease-in;
-            box-shadow: 0 0 15px #9c27b0;
+            border: 2px solid #fff; border-radius: 50%; z-index: 9999;
+            pointer-events: none; transition: all 0.8s ease-in; box-shadow: 0 0 15px #9c27b0;
         }
 
         .game-bottom { background: #ffd93d; border: 3px solid #000; padding: 15px; margin-top: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
@@ -266,6 +160,7 @@
         .btn-primary { background: #4caf50; color: white; }
         .btn-secondary { background: #ff9800; color: white; }
         .btn-danger { background: #f44336; color: white; }
+        .btn-gold { background: #ffd700; color: #8b4513; display: none; margin-left: 10px; animation: pulse 1s infinite; }
         
         .menu-screen, .waiting-room { text-align: center; padding: 50px; }
         .room-setup { background: white; border: 4px solid #000; border-radius: 10px; padding: 40px; max-width: 500px; margin: 0 auto; text-align: left; }
@@ -284,6 +179,10 @@
             <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                 <button class="btn btn-primary" onclick="showCreateRoom()" style="width: 250px;">방 만들기</button>
                 <button class="btn btn-secondary" onclick="showJoinRoom()" style="width: 250px;">방 참가하기</button>
+                <div class="volume-control">
+                    <span>🔊 Sound</span>
+                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.1" value="0.5" oninput="updateVolume(this.value)">
+                </div>
             </div>
         </div>
 
@@ -306,9 +205,21 @@
                 </div>
                 <div class="form-group">
                     <label>게임 모드</label>
-                    <select id="gameMode">
-                        <option value="timeattack">타임어택 (3분)</option>
-                        <option value="deathmatch">데스매치 (서바이벌)</option>
+                    <select id="gameMode" onchange="toggleTimeSelect()">
+                        <option value="timeattack">타임어택</option>
+                        <option value="deathmatch">데스매치</option>
+                    </select>
+                </div>
+                <div class="form-group" id="timeSelectGroup">
+                    <label>제한 시간</label>
+                    <select id="timeLimit">
+                        <option value="60">1분</option>
+                        <option value="90">1분 30초</option>
+                        <option value="120">2분</option>
+                        <option value="150">2분 30초</option>
+                        <option value="180" selected>3분</option>
+                        <option value="210">3분 30초</option>
+                        <option value="240">4분</option>
                     </select>
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 30px;">
@@ -358,10 +269,12 @@
 
             <div class="game-main">
                 <div class="sidebar" id="leftSidebar"></div>
-
                 <div class="game-center">
                     <div class="game-info">
-                        <div class="info-item my-score">점수: <span id="myScore">0</span></div>
+                        <div style="display:flex; align-items:center;">
+                            <div class="info-item my-score">점수: <span id="myScore">0</span></div>
+                            <button id="skillBtn" class="btn btn-gold" onclick="toggleSkillMode()">✨ 사과 지우개</button>
+                        </div>
                         <div class="info-item timer">⏰ <span id="timer">3:00</span></div>
                     </div>
 
@@ -370,19 +283,24 @@
                         <div id="statusMessage">공격 받음!</div>
                     </div>
                     <div style="text-align: center; margin-top: 5px; color: #555; font-size: 14px;">
-                        상대를 클릭하여 공격 대상을 지정하세요 (기본: 랜덤)
+                        상대를 클릭하여 공격 지정 (기본: 랜덤) | 드래그하여 합 10 만들기
                     </div>
                 </div>
-
                 <div class="sidebar" id="rightSidebar"></div>
             </div>
-
             <div class="game-bottom">
                 <div>방 코드: <span id="gameRoomCode">0000</span></div>
                 <div>참가자: <span id="playerCount">0/0</span></div>
             </div>
         </div>
     </div>
+
+    <audio id="bgm" loop>
+        <source src="AppleGameBGM.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="sfxPop">
+        <source src="AppleClick.mp3" type="audio/mpeg">
+    </audio>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
