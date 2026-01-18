@@ -28,7 +28,7 @@ let gameState = {
     selectedCells: [],
     
     // 스킬 및 힌트 로직
-    hasSkill: false, 
+    skillCount: 0, // [필수 요청 5] 아이템 중첩을 위한 카운트 변수
     isUsingSkill: false,
     hintTimer: null
 };
@@ -37,7 +37,7 @@ const audio = {
     bgm: null,
     pop: null,
     volume: 0.5,
-    started: false // 오디오 시작 여부 체크
+    started: false 
 };
 
 window.onload = function() {
@@ -45,7 +45,6 @@ window.onload = function() {
     setupAudio();
     setupSocketEvents();
 
-    // 화면 아무 곳이나 클릭/터치하면 배경음악 시작 (브라우저 정책 대응)
     document.body.addEventListener('click', startAudioContext, { once: true });
     document.body.addEventListener('touchstart', startAudioContext, { once: true });
 };
@@ -56,7 +55,6 @@ function setupAudio() {
     updateVolume(0.5);
 }
 
-// 최초 상호작용 시 오디오 시작
 function startAudioContext() {
     if(!audio.started) {
         audio.started = true;
@@ -73,10 +71,8 @@ function updateVolume(val) {
 function playBGM() {
     if(audio.bgm && audio.bgm.paused) {
         audio.bgm.currentTime = 0;
-        // 사용자 상호작용이 있어야만 play()가 성공함
         audio.bgm.play().catch(e => {
-            console.log("BGM Autoplay prevented via browser policy. Waiting for interaction.");
-            audio.started = false; // 실패하면 다시 시도하도록
+            audio.started = false;
         });
     }
 }
@@ -95,7 +91,6 @@ function hideAllScreens() {
     });
 }
 function showMenu() { hideAllScreens(); document.getElementById('menuScreen').classList.remove('hidden'); }
-// 이미 타이틀에서 BGM이 나오고 있으므로 방 만들기 등에서 굳이 다시 playBGM 호출할 필요 없지만 안전장치로 유지
 function showCreateRoom() { hideAllScreens(); document.getElementById('createRoomScreen').classList.remove('hidden'); playBGM(); }
 function showJoinRoom() { hideAllScreens(); document.getElementById('joinRoomScreen').classList.remove('hidden'); playBGM(); }
 
@@ -111,11 +106,16 @@ function createRoom() {
     const maxPlayers = parseInt(document.getElementById('maxPlayers').value);
     const mode = document.getElementById('gameMode').value;
     const timeLimit = parseInt(document.getElementById('timeLimit').value);
+    
+    // [필수 요청 2] 설정값 가져오기
+    const goldCount = parseInt(document.getElementById('goldCount').value);
+    const specialCount = parseInt(document.getElementById('specialCount').value);
+
     if(!name) return alert('이름을 입력하세요!');
     
     gameState.playerName = name;
     gameState.isHost = true;
-    socket.emit('createRoom', { name, maxPlayers, mode, timeLimit });
+    socket.emit('createRoom', { name, maxPlayers, mode, timeLimit, goldCount, specialCount });
 }
 
 function joinRoom() {
@@ -147,10 +147,8 @@ function setupSocketEvents() {
     socket.on('playersUpdate', (players) => {
         gameState.players = players;
         updateWaitingRoom(players);
-        // 모바일 UI 대응을 위해 게임 중일 때도 업데이트
         if(gameState.isPlaying) updatePlayerPanels();
         
-        // 게임 화면 하단 참가자 수 갱신
         const cntEl = document.getElementById('playerCount');
         if(cntEl) cntEl.textContent = `${players.length}/${gameState.maxPlayers}`;
     });
@@ -163,7 +161,7 @@ function setupSocketEvents() {
         gameState.stones = [];
         gameState.score = 0;
         gameState.targetId = null;
-        gameState.hasSkill = false;
+        gameState.skillCount = 0; // 초기화
         gameState.isUsingSkill = false;
         
         hideAllScreens();
@@ -317,13 +315,12 @@ function onInputStart(e) {
     hideHint();
     resetHintTimer();
 
-    // 터치 시 스크롤 등 기본 동작 방지 (게임판 내부에서만)
-    if(e.type === 'touchstart') {
-       // e.preventDefault(); // 필요 시 주석 해제 (단, 전체 화면 확대/축소 막힘 주의)
-    }
+    // 모바일 터치 시 기본 동작 유지 (스크롤 등 필요할 수 있음)
+    // 단, 그리드 내에서의 드래그가 스크롤을 유발하면 안되므로 preventDefault는 onInputMove에서 처리
 
     const point = getPointFromEvent(e);
     
+    // 스킬 사용 모드
     if(gameState.isUsingSkill) {
         const target = e.target.closest('.apple');
         if(target && !target.classList.contains('empty') && !target.classList.contains('stone')) {
@@ -341,6 +338,8 @@ function onInputStart(e) {
 
 function onInputMove(e) {
     if(!gameState.isSelecting || gameState.isUsingSkill) return;
+    
+    // 게임판 안에서 드래그 중일 땐 화면 스크롤 방지
     if(e.type === 'touchmove') e.preventDefault();
 
     const point = getPointFromEvent(e);
@@ -423,13 +422,15 @@ function checkScore() {
         
         if(goldTriggered) {
             showStatusMessage("황금 사과 효과!✨");
+            // 50% 확률로 리필 or 스킬 획득
             if(Math.random() < 0.5) {
                 refillBoard();
                 showStatusMessage("보드 리필! 🔄");
             } else {
-                gameState.hasSkill = true;
+                // [필수 요청 5] 아이템 중첩
+                gameState.skillCount++;
                 updateSkillButton();
-                showStatusMessage("스킬 획득! ✨");
+                showStatusMessage(`스킬 획득! (+1)`);
             }
         }
 
@@ -508,11 +509,12 @@ function refillBoard() {
     }
 }
 
+// [필수 요청 5] 중첩된 스킬 개수 표시
 function updateSkillButton() {
     const btn = document.getElementById('skillBtn');
-    if(gameState.hasSkill) {
+    if(gameState.skillCount > 0) {
         btn.style.display = 'inline-block';
-        btn.textContent = gameState.isUsingSkill ? "취소" : "✨ 지우개";
+        btn.textContent = gameState.isUsingSkill ? "취소" : `✨ 지우개 (x${gameState.skillCount})`;
         btn.style.background = gameState.isUsingSkill ? "#f44336" : "#ffd700";
         btn.style.color = gameState.isUsingSkill ? "white" : "#8b4513";
     } else {
@@ -543,7 +545,8 @@ function useSingleRemoveSkill(idx) {
     gameState.specials = gameState.specials.filter(s => s !== idx);
     gameState.golds = gameState.golds.filter(g => g !== idx);
 
-    gameState.hasSkill = false;
+    // [필수 요청 5] 스킬 사용 시 차감
+    gameState.skillCount--;
     gameState.isUsingSkill = false;
     document.body.classList.remove('using-skill');
     updateSkillButton();
@@ -629,11 +632,6 @@ function updatePlayerPanels() {
     const leftSidebar = document.getElementById('leftSidebar');
     const rightSidebar = document.getElementById('rightSidebar');
     leftSidebar.innerHTML = ''; rightSidebar.innerHTML = '';
-    
-    // 모바일에서는 사이드바가 하나(leftSidebar)만 보이도록 하거나
-    // CSS 미디어 쿼리에서 flex order로 처리하므로 구조는 유지하되 
-    // 화면 크기에 따라 반반 나누거나 한쪽에 몰아 넣는 것이 좋음.
-    // 여기서는 기존대로 반반 나누고 CSS로 한 줄로 보이게 처리함.
     
     const half = Math.ceil(others.length / 2);
     

@@ -10,17 +10,16 @@
             font-family: 'Arial', sans-serif;
             background: #ffb347;
             display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; padding: 10px; overflow: hidden; user-select: none;
+            min-height: 100vh; padding: 0; overflow: hidden; user-select: none;
         }
 
         body.invisible-cursor, body.invisible-cursor * { cursor: none !important; }
 
         .game-container {
-            background: #ffd700; border: 8px solid #8b4513; border-radius: 10px;
-            padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            max-width: 1400px; width: 100%; position: relative;
+            background: #ffd700; border: 4px solid #8b4513; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 100%; height: 100vh; position: relative;
             display: flex; flex-direction: column;
-            max-height: 95vh;
         }
 
         /* --- 개발자 정보 및 복사 기능 스타일 --- */
@@ -38,111 +37,89 @@
         }
         .dev-info strong { color: #d84315; font-size: 16px; display: block; margin-bottom: 5px; }
         
-        /* 복사 가능한 텍스트 스타일 */
         .copy-text {
-            cursor: pointer;
-            font-weight: bold;
-            color: #333;
-            transition: color 0.2s;
-            padding: 2px 5px;
-            border-radius: 4px;
-            background: #eee;
+            cursor: pointer; font-weight: bold; color: #333; transition: color 0.2s;
+            padding: 2px 5px; border-radius: 4px; background: #eee;
         }
-        .copy-text:hover {
-            color: #d84315;
-            background: #ffe0b2;
-            text-decoration: underline;
-        }
-        .copy-text:active {
-            background: #ffcc80;
-        }
+        .copy-text:hover { color: #d84315; background: #ffe0b2; text-decoration: underline; }
+        .copy-text:active { background: #ffcc80; }
 
+        /* 공통 헤더 */
         .game-header {
             background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
-            border: 4px solid #fff; border-radius: 10px; padding: 10px 15px;
-            text-align: center; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
-            flex-shrink: 0;
+            border-bottom: 4px solid #fff; padding: 10px 15px;
+            text-align: center; display: flex; justify-content: space-between; align-items: center;
+            flex-shrink: 0; height: 60px;
         }
-        .game-title { font-size: 24px; font-weight: bold; color: white; text-shadow: 2px 2px 0px #000; }
+        .game-title { font-size: 20px; font-weight: bold; color: white; text-shadow: 1px 1px 0px #000; }
         .mode-badge {
             background: #fff; color: #d84315; padding: 5px 10px;
             border-radius: 15px; font-weight: bold; font-size: 14px; box-shadow: 1px 1px 0 rgba(0,0,0,0.2);
         }
 
+        /* 메인 게임 영역 (반응형 레이아웃의 핵심) */
         .game-main {
-            display: flex; gap: 15px; background: #87ceeb; border: 4px solid #000;
-            padding: 10px; border-radius: 10px; position: relative; align-items: flex-start;
-            flex: 1; overflow: hidden;
+            display: flex; flex: 1; background: #87ceeb; 
+            overflow: hidden; position: relative;
         }
 
+        /* 사이드바 */
         .sidebar { 
-            flex: 0 0 200px; display: flex; flex-direction: column; gap: 10px; 
-            overflow-y: auto; max-height: 100%;
+            width: 180px; background: #fafafa; border-left: 2px solid #333; border-right: 2px solid #333;
+            display: flex; flex-direction: column; gap: 8px; padding: 10px;
+            overflow-y: auto; flex-shrink: 0;
         }
         
-        .player-panel {
-            background: white; border: 3px solid #000; border-radius: 5px; padding: 8px;
-            transition: all 0.2s; cursor: pointer; position: relative;
+        /* 중앙 게임 보드 */
+        .game-center { 
+            flex: 1; display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; padding: 10px; overflow: hidden;
         }
-        .player-panel:hover { transform: scale(1.02); }
-        .player-panel.target { border-color: #ff0000; background: #ffebee; box-shadow: 0 0 10px #ff0000; }
-        .player-panel.target::after {
-            content: 'TARGET'; position: absolute; top: -10px; right: -5px;
-            background: red; color: white; font-size: 10px; padding: 2px 5px; border-radius: 5px; font-weight: bold;
-        }
-        .player-panel.dead { background: #555; opacity: 0.7; filter: grayscale(100%); pointer-events: none; }
 
-        .player-info { margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
-        .player-name { font-weight: bold; color: #d84315; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;}
-        .player-score { font-weight: bold; color: #2e7d32; font-size: 14px; }
-
-        .player-mini-grid {
-            display: grid; grid-template-columns: repeat(15, 1fr); gap: 0.5px;
-            margin-top: 5px; width: 100%; background: #333; padding: 1px; border-radius: 2px;
-        }
-        .mini-apple { width: 100%; aspect-ratio: 1; background: #ff6b6b; border-radius: 50%; }
-        .mini-apple.empty { background: #ddd; border-radius: 0; }
-        .mini-apple.special { background: #9c27b0; }
-        .mini-apple.stone { background: #7f8c8d; }
-        .mini-apple.gold { background: #ffd700; border: 1px solid #fff; }
-
-        .game-center { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
         .game-info {
-            width: 100%; background: #ffd93d; border: 3px solid #000; padding: 5px 15px;
+            width: 100%; max-width: 600px; background: #ffd93d; border: 3px solid #000; padding: 5px 15px;
             margin-bottom: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;
+            flex-shrink: 0;
         }
-        .info-item { font-size: 20px; font-weight: bold; }
+        .info-item { font-size: 18px; font-weight: bold; }
         .my-score { color: #d84315; }
         .timer { color: #1976d2; }
         .timer.urgent { color: red; animation: pulse 1s infinite; }
 
+        /* --- [필수 요청 4] 그리드 완전 반응형 구현 --- */
         .grid-wrapper {
             background: #c8a2c8; border: 4px solid #000; padding: 5px;
-            border-radius: 10px; position: relative; display: flex; justify-content: center;
-            max-width: 100%; overflow: hidden;
+            border-radius: 10px; position: relative; 
+            /* 화면 비율에 맞춰서 그리드가 꽉 차게 */
+            display: flex; justify-content: center; align-items: center;
+            width: 100%; height: 100%; 
+            max-width: 100%; max-height: 100%;
         }
         
-        #statusMessage {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 40px; font-weight: bold; color: #ff0000;
-            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff; pointer-events: none;
-            z-index: 500; display: none; text-align: center; width: 100%;
-        }
-
         .grid-container {
-            display: grid; grid-template-columns: repeat(15, 1fr); gap: 2px;
-            background: #000; padding: 2px; border-radius: 5px; width: fit-content;
+            display: grid; 
+            grid-template-columns: repeat(15, 1fr); 
+            gap: 2px;
+            background: #000; padding: 2px; border-radius: 5px;
+            /* 핵심: vmin을 사용하여 가로/세로 중 작은 쪽에 맞춤 */
+            /* 15칸 * 1fr + gap... 대략적인 비율 유지 */
+            width: fit-content;
         }
 
         .apple {
-            width: 40px; height: 40px;
+            /* vmin을 사용하여 화면이 길든 넓든 사과가 잘리지 않음 */
+            width: 5vmin; height: 5vmin; 
+            /* 최대 크기 제한 (PC에서 너무 크지 않게) */
+            max-width: 50px; max-height: 50px;
             background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
-            border: 2px solid #fff; border-radius: 50%;
+            border: 1px solid #fff; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            font-size: 18px; font-weight: bold; color: white;
+            font-size: clamp(10px, 2.5vmin, 20px); /* 폰트 크기도 반응형 */
+            font-weight: bold; color: white;
             cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.3); transition: transform 0.1s;
         }
-        
+        /* ------------------------------------------- */
+
         .apple.special {
             background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
             border-color: #e1bee7; box-shadow: 0 0 10px #9c27b0;
@@ -189,50 +166,60 @@
         }
 
         .game-bottom { 
-            background: #ffd93d; border: 3px solid #000; padding: 10px; margin-top: 10px; 
-            border-radius: 5px; display: flex; justify-content: space-between; align-items: center; 
-            flex-shrink: 0; font-size: 14px;
+            background: #ffd93d; border-top: 3px solid #000; padding: 5px 15px;
+            display: flex; justify-content: space-between; align-items: center; 
+            flex-shrink: 0; font-size: 14px; height: 50px;
         }
-        .btn { padding: 10px 15px; border: 3px solid #000; border-radius: 5px; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 #000; }
-        .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #000; }
+        .btn { padding: 8px 15px; border: 2px solid #000; border-radius: 5px; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 3px 0 #000; }
+        .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
         .btn-primary { background: #4caf50; color: white; }
         .btn-secondary { background: #ff9800; color: white; }
         .btn-danger { background: #f44336; color: white; }
         .btn-gold { background: #ffd700; color: #8b4513; display: none; margin-left: 10px; animation: pulse 1s infinite; padding: 5px 10px; font-size: 12px; }
         
-        .menu-screen, .waiting-room { text-align: center; padding: 30px 10px; width: 100%; overflow-y: auto; }
-        .room-setup { background: white; border: 4px solid #000; border-radius: 10px; padding: 30px 20px; max-width: 500px; margin: 0 auto; text-align: left; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
-        .form-group input, .form-group select { width: 100%; padding: 10px; border: 2px solid #000; border-radius: 5px; }
+        .menu-screen, .waiting-room { text-align: center; padding: 30px 10px; width: 100%; overflow-y: auto; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .room-setup { background: white; border: 4px solid #000; border-radius: 10px; padding: 20px; width: 90%; max-width: 500px; text-align: left; overflow-y: auto; max-height: 90vh; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 3px; font-size: 14px; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; border: 2px solid #000; border-radius: 5px; }
+        .range-wrap { display: flex; align-items: center; gap: 10px; }
         
         .hidden { display: none !important; }
 
-        @media (max-width: 1024px) {
-            .game-main { flex-direction: column; align-items: center; }
-            .sidebar { 
-                width: 100%; flex: none; flex-direction: row; gap: 5px; 
-                overflow-x: auto; padding-bottom: 5px;
-                order: 2;
-            }
-            .player-panel { min-width: 120px; }
-            .game-center { width: 100%; order: 1; margin-bottom: 10px; }
+        .player-panel {
+            background: white; border: 2px solid #000; border-radius: 5px; padding: 5px;
+            transition: all 0.2s; cursor: pointer; position: relative; margin-bottom: 5px;
+        }
+        .player-info { display: flex; justify-content: space-between; font-size: 12px; }
+        .player-mini-grid {
+            display: grid; grid-template-columns: repeat(15, 1fr); gap: 0.5px;
+            margin-top: 2px; width: 100%; background: #333; padding: 1px;
+        }
+        .mini-apple { width: 100%; aspect-ratio: 1; background: #ff6b6b; border-radius: 50%; }
+        .mini-apple.empty { background: #ddd; border-radius: 0; }
+        .mini-apple.special { background: #9c27b0; }
+        .mini-apple.stone { background: #7f8c8d; }
+        .mini-apple.gold { background: #ffd700; }
+        
+        .player-panel.dead { background: #555; opacity: 0.7; filter: grayscale(100%); pointer-events: none; }
+        .player-panel.target { border-color: #ff0000; background: #ffebee; }
+
+        #statusMessage {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 8vmin; font-weight: bold; color: #ff0000; width: 100%; text-align: center;
+            text-shadow: 2px 2px 0 #fff; pointer-events: none; z-index: 500; display: none;
         }
 
-        @media (max-width: 768px) {
-            body { padding: 5px; }
-            .game-container { padding: 10px; border-width: 4px; }
-            .game-title { font-size: 20px; }
-            .btn { padding: 8px 12px; font-size: 14px; }
-            
-            .apple { 
-                width: 5.5vw; height: 5.5vw; 
-                max-width: 40px; max-height: 40px;
-                font-size: 12px; border-width: 1px;
+        /* --- 모바일 레이아웃 --- */
+        @media (max-width: 1024px) {
+            .game-main { flex-direction: column; }
+            .sidebar { 
+                width: 100%; height: 80px; flex-direction: row; border: none; border-top: 2px solid #000;
+                overflow-x: auto; padding: 5px; order: 2; gap: 5px;
             }
-            .grid-container { gap: 1px; padding: 1px; }
-            
-            .dev-info { font-size: 12px; padding: 10px; margin-top: 15px; }
+            .player-panel { min-width: 100px; height: 100%; margin: 0; }
+            .game-center { order: 1; padding: 5px; }
+            /* 사이드바는 없애고 플레이어 목록을 상단/하단에 배치하는 것도 방법이나, 요청대로 "비율 유지"에 집중 */
         }
     </style>
 </head>
@@ -241,13 +228,13 @@
         <div id="menuScreen" class="menu-screen">
             <h1 style="font-size: 40px; color: #ff6b35; margin-bottom: 20px;">멀티 사과 배틀 🍎</h1>
             <div style="font-size: 60px; margin-bottom: 20px;">⚔️</div>
-            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; max-width: 300px; margin: 0 auto;">
+            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; max-width: 300px;">
                 <button class="btn btn-primary" onclick="showCreateRoom()" style="width: 100%;">방 만들기</button>
                 <button class="btn btn-secondary" onclick="showJoinRoom()" style="width: 100%;">방 참가하기</button>
                 
-                <div class="volume-control" style="width: 100%; justify-content: center;">
+                <div class="volume-control" style="width: 100%; justify-content: center; display:flex; align-items:center; gap:10px; background:#fff; padding:5px; border-radius:10px;">
                     <span>🔊</span>
-                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.1" value="0.5" oninput="updateVolume(this.value)">
+                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.01" value="0.5" oninput="updateVolume(this.value)" style="width:100px;">
                 </div>
 
                 <div class="dev-info">
@@ -256,7 +243,6 @@
                         하나은행 50991074280107
                     </span><br>
                     <span style="font-size: 0.9em; color: #666; margin-top: 5px; display:block;">개발자: 레부니 (strongest5644@gmail.com)</span>
-                    <div style="margin-top: 5px; font-size: 11px; color: #999;">(화면을 터치하면 노래가 나옵니다)</div>
                 </div>
             </div>
         </div>
@@ -272,16 +258,28 @@
                     <label>최대 인원</label>
                     <select id="maxPlayers">
                         <option value="2">2명</option>
-                        <option value="3">3명</option>
                         <option value="4">4명</option>
-                        <option value="5">5명</option>
                         <option value="6">6명</option>
-                        <option value="7">7명</option>
                         <option value="8">8명</option>
-                        <option value="9">9명</option>
                         <option value="10">10명</option>
                     </select>
                 </div>
+                
+                <div class="form-group">
+                    <label>황금 사과 개수 (1~20)</label>
+                    <div class="range-wrap">
+                        <input type="range" id="goldCount" min="1" max="20" value="3" oninput="document.getElementById('goldVal').textContent=this.value">
+                        <span id="goldVal">3</span>개
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>독 사과 개수 (1~20)</label>
+                    <div class="range-wrap">
+                        <input type="range" id="specialCount" min="1" max="20" value="10" oninput="document.getElementById('specialVal').textContent=this.value">
+                        <span id="specialVal">10</span>개
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label>게임 모드</label>
                     <select id="gameMode" onchange="toggleTimeSelect()">
@@ -293,12 +291,9 @@
                     <label>제한 시간</label>
                     <select id="timeLimit">
                         <option value="60">1분</option>
-                        <option value="90">1분 30초</option>
                         <option value="120">2분</option>
-                        <option value="150">2분 30초</option>
                         <option value="180" selected>3분</option>
-                        <option value="210">3분 30초</option>
-                        <option value="240">4분</option>
+                        <option value="300">5분</option>
                     </select>
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
@@ -331,10 +326,10 @@
                 <h2 style="color: #d84315;">대기실</h2>
                 <div style="font-size: 50px; font-weight: bold; margin: 15px 0;" id="waitingCode">0000</div>
                 <div id="waitingModeDisplay" style="font-weight: bold; color: #555; margin-bottom: 20px;"></div>
-                <div id="waitingPlayers" style="display: flex; flex-direction: column; gap: 5px; max-width: 400px; margin: 0 auto; max-height: 200px; overflow-y: auto;"></div>
-                <div style="margin-top: 20px;">
-                    <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" style="display: none;">게임 시작</button>
-                    <button class="btn btn-danger" onclick="leaveRoom()">나가기</button>
+                <div id="waitingPlayers" style="display: flex; flex-direction: column; gap: 5px; max-width: 400px; margin-top: 10px; width: 100%;"></div>
+                <div style="margin-top: 20px; width: 100%; max-width: 300px;">
+                    <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" style="display: none; width: 100%; margin-bottom: 10px;">게임 시작</button>
+                    <button class="btn btn-danger" onclick="leaveRoom()" style="width: 100%;">나가기</button>
                 </div>
             </div>
         </div>
@@ -362,16 +357,14 @@
                         <div class="grid-container" id="grid"></div>
                         <div id="statusMessage">공격 받음!</div>
                     </div>
-                    <div style="text-align: center; margin-top: 5px; color: #555; font-size: 12px;">
-                        터치/클릭: 공격 대상 지정 | 드래그: 합 10 만들기
-                    </div>
                 </div>
 
                 <div class="sidebar" id="rightSidebar"></div>
             </div>
 
             <div class="game-bottom">
-                <div>방 코드: <span id="gameRoomCode">0000</span></div>
+                <div>코드: <span id="gameRoomCode">0000</span></div>
+                <div style="font-size: 12px; color:#555; margin-left:10px;">터치:공격 | 드래그:합10</div>
                 <div>참가자: <span id="playerCount">0/0</span></div>
             </div>
         </div>
@@ -393,11 +386,9 @@
                 navigator.clipboard.writeText(text).then(() => {
                     alert('계좌번호가 복사되었습니다: ' + text);
                 }).catch(err => {
-                    console.error('복사 실패:', err);
                     prompt('Ctrl+C를 눌러 복사하세요:', text);
                 });
             } else {
-                // 구형 브라우저 대응
                 const textArea = document.createElement("textarea");
                 textArea.value = text;
                 document.body.appendChild(textArea);

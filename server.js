@@ -15,28 +15,65 @@ function generateRoomCode() {
     return code;
 }
 
-// 그리드 생성 (숫자 + 독사과 10개 + 황금 3개)
-function generateGridData() {
+// 그리드 생성 (설정값 반영 + 쉬운 조합 보장)
+function generateGridData(targetGoldCount, targetSpecialCount) {
     const grid = [];
-    const specials = []; // 독사과
-    const golds = [];    // 황금사과
+    const specials = [];
+    const golds = [];
     
-    // 150칸 랜덤 숫자 채우기
+    // 1. 기본 150칸 랜덤 채우기
     for(let i=0; i<150; i++) {
         grid.push(Math.floor(Math.random() * 9) + 1);
     }
     
-    // 독사과 10개 지정
-    while(specials.length < 10) {
-        const r = Math.floor(Math.random() * 150);
-        if(!specials.includes(r)) specials.push(r);
-    }
+    // 2. [필수 요청 1] 쉬운 조합 강제 생성 (9, 1 배치)
+    // 인덱스 충돌 방지를 위한 헬퍼 함수
+    const usedIndices = new Set();
     
-    // 황금 사과 3개 지정
-    while(golds.length < 3) {
+    function getSafePairIndex() {
+        // 15열 그리드이므로, 행이 바뀌지 않는 위치(오른쪽 끝 제외)를 찾아야 함
+        // 0~148 중, i % 15 !== 14 인 곳
+        let idx;
+        let attempts = 0;
+        do {
+            idx = Math.floor(Math.random() * 149);
+            attempts++;
+            if (attempts > 1000) break; // 무한루프 방지
+        } while (
+            idx % 15 === 14 || // 오른쪽 끝이면 옆이랑 짝 못지음
+            usedIndices.has(idx) || usedIndices.has(idx+1) // 이미 쓴 자리
+        );
+        usedIndices.add(idx);
+        usedIndices.add(idx+1);
+        return idx;
+    }
+
+    // (1) 쉬운 황금 사과 배치 (9, 1)
+    const goldIdx = getSafePairIndex();
+    grid[goldIdx] = 9;
+    grid[goldIdx+1] = 1; 
+    golds.push(goldIdx); // 9번 자리를 황금사과로 (혹은 1번 자리여도 됨, 여기선 왼쪽)
+
+    // (2) 쉬운 독 사과 배치 (9, 1)
+    const specialIdx = getSafePairIndex();
+    grid[specialIdx] = 9;
+    grid[specialIdx+1] = 1;
+    specials.push(specialIdx); // 9번 자리를 독사과로
+
+    // 3. 나머지 황금 사과 채우기 (방장 설정 개수만큼)
+    while(golds.length < targetGoldCount) {
         const r = Math.floor(Math.random() * 150);
-        // 독사과 자리 피해서
-        if(!specials.includes(r) && !golds.includes(r)) golds.push(r);
+        if(!golds.includes(r) && !specials.includes(r)) {
+            golds.push(r);
+        }
+    }
+
+    // 4. 나머지 독 사과 채우기 (방장 설정 개수만큼)
+    while(specials.length < targetSpecialCount) {
+        const r = Math.floor(Math.random() * 150);
+        if(!golds.includes(r) && !specials.includes(r)) {
+            specials.push(r);
+        }
     }
     
     return { grid, specials, golds };
@@ -45,13 +82,16 @@ function generateGridData() {
 io.on('connection', (socket) => {
     console.log(`[Connect] ${socket.id}`);
 
-    socket.on('createRoom', ({ name, maxPlayers, mode, timeLimit }) => {
+    // [필수 요청 2] 방 생성 시 개수 조절 데이터 받기
+    socket.on('createRoom', ({ name, maxPlayers, mode, timeLimit, goldCount, specialCount }) => {
         const roomCode = generateRoomCode();
         const room = {
             code: roomCode,
             maxPlayers: maxPlayers,
             mode: mode,
             timeLimit: timeLimit || 180,
+            goldCount: goldCount || 3,      // 기본값 3
+            specialCount: specialCount || 10, // 기본값 10
             players: [],
             isPlaying: false,
             timerInterval: null
@@ -76,7 +116,8 @@ io.on('connection', (socket) => {
         let time = room.timeLimit;
         
         room.players.forEach(p => {
-            const data = generateGridData();
+            // 설정된 개수만큼 생성
+            const data = generateGridData(room.goldCount, room.specialCount);
             p.score = 0;
             p.isDead = false;
             io.to(p.id).emit('gameStarted', { 
