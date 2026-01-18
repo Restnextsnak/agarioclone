@@ -1,217 +1,242 @@
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+const io = require('socket.io')(http);
 const path = require('path');
 
-// 정적 파일 제공
 app.use(express.static(__dirname));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// 게임 방 관리
 const rooms = new Map();
 
-// 랜덤 방 코드 생성
+// 유틸: 방 코드 생성
 function generateRoomCode() {
     let code;
-    do {
-        code = Math.floor(1000 + Math.random() * 9000).toString();
-    } while (rooms.has(code));
+    do { code = Math.floor(1000 + Math.random() * 9000).toString(); } while (rooms.has(code));
     return code;
 }
 
-// 초기 그리드 생성 (15x10 = 150칸)
-function generateGrid() {
+// 유틸: 150칸 그리드 생성 (숫자 + 특수 사과 인덱스)
+function generateGridData() {
     const grid = [];
-    for (let i = 0; i < 150; i++) {
+    const specials = [];
+    for(let i=0; i<150; i++) {
         grid.push(Math.floor(Math.random() * 9) + 1);
     }
-    return grid;
+    // 특수 사과 5개 랜덤 지정
+    while(specials.length < 5) {
+        const r = Math.floor(Math.random() * 150);
+        if(!specials.includes(r)) specials.push(r);
+    }
+    return { grid, specials };
 }
 
-// Socket.IO 연결
 io.on('connection', (socket) => {
-    console.log(`[연결] ${socket.id}`);
+    console.log(`[Connect] ${socket.id}`);
 
-    // 방 만들기
-    socket.on('createRoom', ({ name, maxPlayers }) => {
+    // 방 생성
+    socket.on('createRoom', ({ name, maxPlayers, mode }) => {
         const roomCode = generateRoomCode();
-        
         const room = {
             code: roomCode,
             maxPlayers: maxPlayers,
-            players: [{
-                id: socket.id,
-                name: name,
-                score: 0,
-                isHost: true
-            }],
-            grid: generateGrid(),
+            mode: mode, // 'timeattack' or 'deathmatch'
+            players: [],
             isPlaying: false,
-            startTime: null
+            timerInterval: null
         };
-        
         rooms.set(roomCode, room);
-        socket.join(roomCode);
         
-        socket.emit('roomCreated', { roomCode, maxPlayers });
-        io.to(roomCode).emit('playersUpdate', room.players);
-        
-        console.log(`[방 생성] ${roomCode} (${name}, 최대 ${maxPlayers}명)`);
+        joinRoomLogic(socket, room, name, true);
     });
 
     // 방 참가
     socket.on('joinRoom', ({ name, roomCode }) => {
         const room = rooms.get(roomCode);
+        if (!room) return socket.emit('error', '방이 없습니다.');
+        if (room.players.length >= room.maxPlayers) return socket.emit('error', '방이 꽉 찼습니다.');
+        if (room.isPlaying) return socket.emit('error', '이미 게임 중입니다.');
         
-        if (!room) {
-            socket.emit('roomNotFound');
-            return;
-        }
-        
-        if (room.players.length >= room.maxPlayers) {
-            socket.emit('roomFull');
-            return;
-        }
-        
-        room.players.push({
-            id: socket.id,
-            name: name,
-            score: 0,
-            isHost: false
-        });
-        
-        socket.join(roomCode);
-        socket.emit('roomJoined', { roomCode, maxPlayers: room.maxPlayers });
-        io.to(roomCode).emit('playersUpdate', room.players);
-        
-        console.log(`[방 참가] ${roomCode}: ${name}`);
+        joinRoomLogic(socket, room, name, false);
     });
 
     // 게임 시작
     socket.on('startGame', (roomCode) => {
         const room = rooms.get(roomCode);
-        if (!room) return;
-        
-        // 방장 확인
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player || !player.isHost) return;
+        if(!room || room.players[0].id !== socket.id) return;
         
         room.isPlaying = true;
-        room.startTime = Date.now();
+        let time = 180; // 3분
         
-        io.to(roomCode).emit('gameStarted', {
-            grid: room.grid,
-            players: room.players
+        // 각 플레이어에게 고유 그리드 생성 및 전송
+        room.players.forEach(p => {
+            const data = generateGridData();
+            p.score = 0;
+            p.isDead = false;
+            // 서버는 그리드 상세 데이터를 저장하진 않고 클라이언트가 보낸걸 중계만 함 (메모리 절약)
+            // 다만 초기화 데이터는 보내줌
+            io.to(p.id).emit('gameStarted', { 
+                mode: room.mode,
+                grid: data.grid,
+                specials: data.specials
+            });
         });
-        
-        console.log(`[게임 시작] ${roomCode}`);
-        
-        // 3분 타이머
-        setTimeout(() => {
-            endGame(roomCode);
-        }, 180000);
+
+        io.to(roomCode).emit('playersUpdate', room.players); // 초기화된 점수 등 전파
+
+        // 타이머 및 모드별 로직
+        room.timerInterval = setInterval(() => {
+            if(!room.isPlaying) { clearInterval(room.timerInterval); return; }
+            
+            time--;
+            io.to(roomCode).emit('timerUpdate', time);
+
+            // 데스매치: 30초마다 탈락 (30, 60, 90... 초가 지난 시점이니 남은시간 기준 150, 120...)
+            if(room.mode === 'deathmatch' && time < 180 && time % 30 === 0 && time > 0) {
+                processDeathmatch(room);
+            }
+
+            if(time <= 0) {
+                clearInterval(room.timerInterval);
+                finishGame(room);
+            }
+            
+            // 데스매치 조기 종료 (1명 남음)
+            if(room.mode === 'deathmatch') {
+                const survivors = room.players.filter(p => !p.isDead);
+                if(survivors.length === 1) {
+                    clearInterval(room.timerInterval);
+                    finishGame(room);
+                }
+            }
+
+        }, 1000);
     });
 
-    // 그리드 업데이트
-    socket.on('gridUpdate', ({ roomCode, grid, score }) => {
-        const room = rooms.get(roomCode);
-        if (!room) return;
+    // 클라이언트 상태 업데이트 (모니터링용 중계)
+    socket.on('myGridUpdate', (data) => {
+        const room = rooms.get(data.roomCode);
+        if(!room) return;
         
-        room.grid = grid;
-        
-        const player = room.players.find(p => p.id === socket.id);
-        if (player) {
-            player.score = score;
+        const p = room.players.find(pl => pl.id === socket.id);
+        if(p) {
+            p.score = data.score;
+            // 다른 사람들에게 이 사람의 상태를 알림
+            socket.broadcast.to(data.roomCode).emit('monitorUpdate', {
+                playerId: socket.id,
+                grid: data.grid,
+                specials: data.specials,
+                stones: data.stones,
+                score: data.score
+            });
         }
+    });
+
+    // 공격 요청 처리
+    socket.on('attack', ({ roomCode, targetId, type }) => {
+        const room = rooms.get(roomCode);
+        if(!room) return;
         
-        // 모든 플레이어에게 업데이트 전송
-        io.to(roomCode).emit('gridUpdate', {
-            grid: grid,
-            playerId: socket.id,
-            score: score
-        });
+        const attacker = room.players.find(p => p.id === socket.id);
+        let target;
+
+        // 타겟 지정이 없거나 본인이면 랜덤 (생존자 중)
+        if(!targetId || targetId === socket.id) {
+            const potentialTargets = room.players.filter(p => p.id !== socket.id && !p.isDead);
+            if(potentialTargets.length > 0) {
+                target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+            }
+        } else {
+            target = room.players.find(p => p.id === targetId);
+        }
+
+        if(attacker && target && !target.isDead) {
+            // 타겟에게 효과 전달
+            io.to(target.id).emit('attacked', { type: type, attackerName: attacker.name });
+            
+            // 모든 사람에게 시각적 효과 전달 (누가 -> 누구)
+            io.to(roomCode).emit('visualAttack', { from: attacker.id, to: target.id });
+        }
     });
 
-    // 방 나가기
-    socket.on('leaveRoom', (roomCode) => {
-        leaveRoom(socket, roomCode);
-    });
-
-    // 연결 해제
+    // 나가기
+    socket.on('leaveRoom', (roomCode) => handleLeave(socket, roomCode));
     socket.on('disconnect', () => {
-        console.log(`[연결 해제] ${socket.id}`);
-        
         rooms.forEach((room, code) => {
-            leaveRoom(socket, code);
+            if(room.players.find(p => p.id === socket.id)) handleLeave(socket, code);
         });
     });
 });
 
-// 방 나가기 처리
-function leaveRoom(socket, roomCode) {
+function joinRoomLogic(socket, room, name, isHost) {
+    const player = { id: socket.id, name, isHost, score: 0, isDead: false };
+    room.players.push(player);
+    socket.join(room.code);
+    
+    socket.emit(isHost ? 'roomCreated' : 'roomJoined', { 
+        roomCode: room.code, maxPlayers: room.maxPlayers, mode: room.mode 
+    });
+    io.to(room.code).emit('playersUpdate', room.players);
+}
+
+function handleLeave(socket, roomCode) {
     const room = rooms.get(roomCode);
-    if (!room) return;
+    if(!room) return;
     
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    if (playerIndex === -1) return;
+    const idx = room.players.findIndex(p => p.id === socket.id);
+    if(idx === -1) return;
     
-    const player = room.players[playerIndex];
-    room.players.splice(playerIndex, 1);
-    
+    room.players.splice(idx, 1);
     socket.leave(roomCode);
     
-    console.log(`[방 나가기] ${roomCode}: ${player.name}`);
-    
-    if (room.players.length === 0) {
+    if(room.players.length === 0) {
+        if(room.timerInterval) clearInterval(room.timerInterval);
         rooms.delete(roomCode);
-        console.log(`[방 삭제] ${roomCode}`);
     } else {
-        if (player.isHost && room.players.length > 0) {
-            room.players[0].isHost = true;
-        }
-        
+        if(!room.players.some(p => p.isHost)) room.players[0].isHost = true;
         io.to(roomCode).emit('playersUpdate', room.players);
-        
-        if (room.isPlaying) {
-            endGame(roomCode);
-        }
+        // 게임 중 다 나가서 1명 남으면 종료 로직 등은 생략 (간소화)
     }
 }
 
-// 게임 종료
-function endGame(roomCode) {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+function processDeathmatch(room) {
+    // 생존자들
+    let survivors = room.players.filter(p => !p.isDead);
+    if(survivors.length <= 1) return;
+
+    // 점수 오름차순 정렬
+    survivors.sort((a, b) => a.score - b.score);
     
-    room.isPlaying = false;
-    
-    const scores = room.players
-        .map(p => ({ name: p.name, score: p.score }))
-        .sort((a, b) => b.score - a.score);
-    
-    const winner = scores[0];
-    
-    io.to(roomCode).emit('gameEnded', { winner, scores });
-    
-    console.log(`[게임 종료] ${roomCode}, 승자: ${winner.name} (${winner.score}점)`);
+    // 탈락 인원 (50% 내림)
+    const elimCount = Math.floor(survivors.length * 0.5);
+    if(elimCount < 1) return;
+
+    // 점수가 낮은 순서대로 탈락
+    // 동점자 처리는 sort가 불안정할 수 있으나, JS sort는 안정적이거나 먼저 들어온 순서를 유지하는 경우가 많음.
+    // 엄격한 '먼저 점수 낸 사람'은 timestamp가 필요하지만, 여기선 배열 순서(참가순) 등으로 대체
+    for(let i=0; i<elimCount; i++) {
+        const victim = survivors[i];
+        victim.isDead = true;
+        io.to(room.code).emit('playerEliminated', victim.id);
+    }
 }
 
-// 서버 시작 (Render의 PORT 환경변수 사용)
+function finishGame(room) {
+    room.isPlaying = false;
+    const survivors = room.players.filter(p => !p.isDead);
+    
+    // 점수 내림차순
+    survivors.sort((a, b) => b.score - a.score);
+    
+    const winner = survivors.length > 0 ? survivors[0] : null;
+    const scores = room.players.map(p => ({ 
+        name: p.name, 
+        score: p.score, 
+        isDead: p.isDead 
+    })).sort((a,b) => b.score - a.score); // 최종 결과창은 죽은 사람 포함 전체 순위
+
+    io.to(room.code).emit('gameEnded', { winner, scores });
+}
+
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log('═══════════════════════════════════════');
-    console.log('🍎 멀티 사과 게임 서버 시작!');
-    console.log('═══════════════════════════════════════');
-    console.log(`포트: ${PORT}`);
-    console.log(`URL: http://localhost:${PORT}`);
-    console.log('═══════════════════════════════════════');
-});
+http.listen(PORT, () => console.log(`Server running on port ${PORT}`));

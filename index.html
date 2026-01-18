@@ -3,14 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>멀티 사과 게임</title>
+    <title>멀티 사과 게임 - 배틀</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Arial', sans-serif;
             background: #ffb347;
@@ -19,6 +14,13 @@
             align-items: center;
             min-height: 100vh;
             padding: 20px;
+            overflow: hidden; /* 이펙트가 화면 밖으로 나가는 것 방지 */
+        }
+
+        /* 투명 마우스 효과 */
+        body.invisible-cursor, 
+        body.invisible-cursor * {
+            cursor: none !important;
         }
 
         .game-container {
@@ -29,6 +31,7 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             max-width: 1400px;
             width: 100%;
+            position: relative;
         }
 
         /* 상단 헤더 */
@@ -36,18 +39,29 @@
             background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
             border: 4px solid #fff;
             border-radius: 10px;
-            padding: 20px;
+            padding: 15px;
             text-align: center;
             margin-bottom: 20px;
-            box-shadow: inset 0 -5px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .game-title {
-            font-size: 48px;
+            font-size: 32px;
             font-weight: bold;
             color: white;
-            text-shadow: 4px 4px 0px #000;
-            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        .mode-badge {
+            background: #fff;
+            color: #d84315;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 18px;
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
         }
 
         /* 메인 게임 영역 */
@@ -58,38 +72,21 @@
             border: 4px solid #000;
             padding: 15px;
             border-radius: 10px;
+            position: relative;
         }
 
-        /* 사이드바 */
+        /* 사이드바 (플레이어 목록) */
         .sidebar {
-            flex: 0 0 200px;
+            flex: 0 0 220px;
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
-
-        .sidebar.left {
-            background: repeating-linear-gradient(
-                45deg,
-                #98fb98,
-                #98fb98 20px,
-                #90ee90 20px,
-                #90ee90 40px
-            );
-            border: 3px solid #000;
-            padding: 10px;
-        }
-
-        .sidebar.right {
-            background: repeating-linear-gradient(
-                45deg,
-                #98fb98,
-                #98fb98 20px,
-                #90ee90 20px,
-                #90ee90 40px
-            );
-            border: 3px solid #000;
-            padding: 10px;
+        
+        .sidebar-title {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 5px;
         }
 
         /* 플레이어 패널 */
@@ -98,60 +95,52 @@
             border: 3px solid #000;
             border-radius: 5px;
             padding: 10px;
-            min-height: 100px;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
         }
 
-        .player-info {
-            margin-bottom: 10px;
+        .player-panel:hover {
+            transform: scale(1.02);
         }
 
-        .player-name {
-            font-size: 16px;
-            font-weight: bold;
-            color: #d84315;
-            margin-bottom: 5px;
+        .player-panel.target {
+            border-color: #ff0000;
+            background: #ffebee;
+            box-shadow: 0 0 10px #ff0000;
         }
-
-        .player-score {
-            font-size: 24px;
-            font-weight: bold;
-            color: #2e7d32;
-        }
-
-        .player-mini-grid {
-            display: grid;
-            grid-template-columns: repeat(10, 1fr);
-            gap: 1px;
-            margin-top: 5px;
-        }
-
-        .mini-apple {
-            aspect-ratio: 1;
-            background: #ff6b6b;
-            border-radius: 50%;
-            font-size: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        
+        .player-panel.target::after {
+            content: 'TARGET';
+            position: absolute;
+            top: -10px;
+            right: -5px;
+            background: red;
             color: white;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 5px;
             font-weight: bold;
         }
-
-        .mini-apple.empty {
-            background: #ddd;
+        
+        .player-panel.dead {
+            background: #555;
+            opacity: 0.7;
+            filter: grayscale(100%);
+            pointer-events: none;
         }
+
+        .player-info { margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .player-name { font-weight: bold; color: #d84315; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;}
+        .player-score { font-weight: bold; color: #2e7d32; font-size: 16px; }
 
         /* 중앙 게임 보드 */
-        .game-center {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
+        .game-center { flex: 1; display: flex; flex-direction: column; }
 
         .game-info {
             background: #ffd93d;
             border: 3px solid #000;
-            padding: 15px;
+            padding: 10px 20px;
             margin-bottom: 15px;
             border-radius: 5px;
             display: flex;
@@ -159,26 +148,36 @@
             align-items: center;
         }
 
-        .info-item {
-            font-size: 24px;
-            font-weight: bold;
-        }
+        .info-item { font-size: 24px; font-weight: bold; }
+        .my-score { color: #d84315; }
+        .timer { color: #1976d2; }
+        .timer.urgent { color: red; animation: pulse 1s infinite; }
 
-        .my-score {
-            color: #d84315;
-        }
-
-        .timer {
-            color: #1976d2;
-        }
-
-        /* 게임 그리드 */
+        /* 그리드 */
         .grid-wrapper {
             background: #c8a2c8;
             border: 4px solid #000;
-            padding: 15px;
+            padding: 10px;
             border-radius: 10px;
             position: relative;
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* 상태 메시지 (공격 받음 등) */
+        #statusMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 40px;
+            font-weight: bold;
+            color: #ff0000;
+            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+            pointer-events: none;
+            z-index: 500;
+            display: none;
+            text-align: center;
         }
 
         .grid-container {
@@ -188,17 +187,19 @@
             background: #000;
             padding: 3px;
             border-radius: 5px;
+            width: fit-content;
         }
 
         .apple {
-            aspect-ratio: 1;
+            width: 40px;
+            height: 40px;
             background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
             border: 2px solid #fff;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: bold;
             color: white;
             cursor: pointer;
@@ -206,10 +207,27 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             transition: transform 0.1s;
         }
-
-        .apple:hover {
-            transform: scale(1.05);
+        
+        /* 특수 사과 (보라색) */
+        .apple.special {
+            background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+            border-color: #e1bee7;
+            box-shadow: 0 0 10px #9c27b0;
+            animation: glow 1.5s infinite alternate;
         }
+
+        /* 돌 사과 */
+        .apple.stone {
+            background: #7f8c8d;
+            background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxmaWx0ZXIgaWQ9Im4iPjxmZVR1cmJ1bGVuY2UgdHlwZT0iZnJhY3RhbE5vaXNlIiBiYXNlRnJlcXVlbmN5PSIwLjUiIG51bU9jdGF2ZXM9IjEiIHN0aXRjaFRpbGVzPSJzdGl0Y2giLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ0cmFuc3BhcmVudCIvPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNuKSIgb3BhY2l0eT0iMC41Ii8+PC9zdmc+');
+            border-color: #555;
+            color: #ccc;
+            cursor: not-allowed;
+            transform: scale(0.9);
+        }
+
+        .apple:hover { transform: scale(1.05); }
+        .apple.stone:hover { transform: scale(0.9); }
 
         .apple.selecting {
             background: linear-gradient(135deg, #ffd93d 0%, #ffb400 100%);
@@ -218,226 +236,68 @@
             z-index: 10;
         }
 
-        .apple.empty {
-            background: #ddd;
-            border-color: #999;
-            cursor: default;
-            opacity: 0.3;
-        }
+        .apple.empty { background: #ddd; border-color: #999; cursor: default; opacity: 0.3; }
 
-        /* 선택 박스 */
-        .selection-box {
-            position: absolute;
-            border: 3px dashed #ff6b35;
-            background: rgba(255, 107, 53, 0.2);
+        /* 애니메이션 */
+        @keyframes glow { from { box-shadow: 0 0 5px #9c27b0; } to { box-shadow: 0 0 20px #9c27b0; } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        
+        /* 날아가는 사과 이펙트 */
+        .flying-apple {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            z-index: 9999;
             pointer-events: none;
-            z-index: 100;
+            transition: all 0.8s ease-in;
+            box-shadow: 0 0 15px #9c27b0;
         }
 
-        /* 하단 컨트롤 */
-        .game-bottom {
-            background: #ffd93d;
-            border: 3px solid #000;
-            padding: 15px;
-            margin-top: 15px;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        /* 하단 컨트롤 및 메뉴들은 유지하되 스타일 일부 조정 */
+        .game-bottom { background: #ffd93d; border: 3px solid #000; padding: 15px; margin-top: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 20px; border: 3px solid #000; border-radius: 5px; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 #000; }
+        .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #000; }
+        .btn-primary { background: #4caf50; color: white; }
+        .btn-secondary { background: #ff9800; color: white; }
+        .btn-danger { background: #f44336; color: white; }
+        
+        .menu-screen, .waiting-room { text-align: center; padding: 50px; }
+        .room-setup { background: white; border: 4px solid #000; border-radius: 10px; padding: 40px; max-width: 500px; margin: 0 auto; text-align: left; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 2px solid #000; border-radius: 5px; }
+        
+        .hidden { display: none !important; }
+        
+        /* 미니 그리드 (상대방) */
+        .player-mini-grid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 1px; margin-top: 5px; height: 60px; overflow: hidden; }
+        .mini-apple { width: 100%; padding-top: 100%; background: #ff6b6b; border-radius: 50%; }
+        .mini-apple.empty { background: #ddd; }
+        .mini-apple.special { background: #9c27b0; }
+        .mini-apple.stone { background: #7f8c8d; }
 
-        .bottom-info {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-
-        .room-code-display {
-            font-size: 20px;
-            font-weight: bold;
-            color: #d84315;
-        }
-
-        .player-count {
-            font-size: 16px;
-            color: #1976d2;
-        }
-
-        /* 버튼 */
-        .btn {
-            padding: 12px 30px;
-            border: 3px solid #000;
-            border-radius: 5px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 4px 0 #000;
-        }
-
-        .btn:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #000;
-        }
-
-        .btn-primary {
-            background: #4caf50;
-            color: white;
-        }
-
-        .btn-secondary {
-            background: #ff9800;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #f44336;
-            color: white;
-        }
-
-        /* 메뉴 화면 */
-        .menu-screen {
-            text-align: center;
-            padding: 50px;
-        }
-
-        .menu-title {
-            font-size: 72px;
-            font-weight: bold;
-            color: #ff6b35;
-            text-shadow: 4px 4px 0px #000;
-            margin-bottom: 30px;
-        }
-
-        .menu-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            align-items: center;
-            margin-top: 40px;
-        }
-
-        .menu-button {
-            width: 300px;
-            padding: 20px;
-            font-size: 24px;
-        }
-
-        /* 방 설정 */
-        .room-setup {
-            background: white;
-            border: 4px solid #000;
-            border-radius: 10px;
-            padding: 40px;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-
-        .room-setup h2 {
-            font-size: 32px;
-            color: #d84315;
-            margin-bottom: 30px;
-        }
-
-        .form-group {
-            margin-bottom: 25px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #333;
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 15px;
-            font-size: 18px;
-            border: 3px solid #000;
-            border-radius: 5px;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        /* 대기실 */
-        .waiting-room {
-            text-align: center;
-            padding: 50px;
-        }
-
-        .waiting-code {
-            font-size: 80px;
-            font-weight: bold;
-            color: #ff6b35;
-            letter-spacing: 15px;
-            margin: 30px 0;
-            text-shadow: 3px 3px 0 #000;
-        }
-
-        .waiting-players {
-            background: white;
-            border: 3px solid #000;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
-        }
-
-        .waiting-player {
-            font-size: 20px;
-            padding: 10px;
-            border-bottom: 2px solid #ddd;
-        }
-
-        .waiting-player:last-child {
-            border-bottom: none;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
-        /* 반응형 */
-        @media (max-width: 1200px) {
-            .game-main {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                flex: 0 0 auto;
-            }
-
-            .player-panel {
-                display: flex;
-                gap: 20px;
-            }
-        }
     </style>
 </head>
 <body>
     <div class="game-container">
-        <!-- 메뉴 화면 -->
         <div id="menuScreen" class="menu-screen">
-            <div class="menu-title">멀티 사과 게임</div>
-            <div style="font-size: 100px;">🍎</div>
-            <div class="menu-buttons">
-                <button class="btn btn-primary menu-button" onclick="showCreateRoom()">방 만들기</button>
-                <button class="btn btn-secondary menu-button" onclick="showJoinRoom()">방 참가하기</button>
+            <h1 style="font-size: 50px; color: #ff6b35; margin-bottom: 20px;">멀티 사과 배틀 🍎</h1>
+            <div style="font-size: 80px; margin-bottom: 30px;">⚔️</div>
+            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                <button class="btn btn-primary" onclick="showCreateRoom()" style="width: 250px;">방 만들기</button>
+                <button class="btn btn-secondary" onclick="showJoinRoom()" style="width: 250px;">방 참가하기</button>
             </div>
         </div>
 
-        <!-- 방 만들기 화면 -->
         <div id="createRoomScreen" class="hidden">
             <div class="room-setup">
                 <h2>방 만들기</h2>
                 <div class="form-group">
                     <label>플레이어 이름</label>
-                    <input type="text" id="hostName" placeholder="이름 입력" maxlength="10" />
+                    <input type="text" id="hostName" placeholder="이름 입력" maxlength="8" />
                 </div>
                 <div class="form-group">
                     <label>최대 인원</label>
@@ -449,43 +309,44 @@
                         <option value="6">6명</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>게임 모드</label>
+                    <select id="gameMode">
+                        <option value="timeattack">타임어택 (3분)</option>
+                        <option value="deathmatch">데스매치 (서바이벌)</option>
+                    </select>
+                </div>
                 <div style="display: flex; gap: 10px; margin-top: 30px;">
-                    <button class="btn btn-primary" onclick="createRoom()" style="flex: 1;">방 만들기</button>
+                    <button class="btn btn-primary" onclick="createRoom()" style="flex: 1;">생성</button>
                     <button class="btn btn-danger" onclick="showMenu()">취소</button>
                 </div>
             </div>
         </div>
 
-        <!-- 방 참가 화면 -->
         <div id="joinRoomScreen" class="hidden">
             <div class="room-setup">
                 <h2>방 참가하기</h2>
                 <div class="form-group">
                     <label>플레이어 이름</label>
-                    <input type="text" id="guestName" placeholder="이름 입력" maxlength="10" />
+                    <input type="text" id="guestName" placeholder="이름 입력" maxlength="8" />
                 </div>
                 <div class="form-group">
                     <label>방 코드</label>
                     <input type="text" id="roomCodeInput" placeholder="4자리 코드" maxlength="4" />
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 30px;">
-                    <button class="btn btn-primary" onclick="joinRoom()" style="flex: 1;">참가하기</button>
+                    <button class="btn btn-primary" onclick="joinRoom()" style="flex: 1;">참가</button>
                     <button class="btn btn-danger" onclick="showMenu()">취소</button>
                 </div>
             </div>
         </div>
 
-        <!-- 대기실 -->
         <div id="waitingRoom" class="hidden">
             <div class="waiting-room">
-                <h2 style="font-size: 36px; color: #d84315;">대기실</h2>
-                <div class="waiting-code" id="waitingCode">0000</div>
-                <p style="font-size: 20px; color: #666;">위 코드를 친구에게 알려주세요!</p>
-                
-                <div class="waiting-players" id="waitingPlayers">
-                    <!-- 플레이어 목록 -->
-                </div>
-                
+                <h2 style="color: #d84315;">대기실</h2>
+                <div style="font-size: 60px; font-weight: bold; margin: 20px 0;" id="waitingCode">0000</div>
+                <div id="waitingModeDisplay" style="font-weight: bold; color: #555; margin-bottom: 20px;"></div>
+                <div id="waitingPlayers" style="display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto;"></div>
                 <div style="margin-top: 30px;">
                     <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" style="display: none;">게임 시작</button>
                     <button class="btn btn-danger" onclick="leaveRoom()">나가기</button>
@@ -493,38 +354,37 @@
             </div>
         </div>
 
-        <!-- 게임 화면 -->
         <div id="gameScreen" class="hidden">
             <div class="game-header">
-                <div class="game-title">멀티 사과 게임 🍎</div>
+                <div class="game-title">Apple Battle</div>
+                <div class="mode-badge" id="gameModeBadge">MODE</div>
+                <button class="btn btn-danger" style="padding: 5px 10px; font-size: 14px;" onclick="leaveGame()">포기</button>
             </div>
 
             <div class="game-main">
-                <!-- 왼쪽 사이드바 -->
-                <div class="sidebar left" id="leftSidebar"></div>
+                <div class="sidebar" id="leftSidebar"></div>
 
-                <!-- 중앙 게임 보드 -->
                 <div class="game-center">
                     <div class="game-info">
-                        <div class="info-item my-score">내 점수: <span id="myScore">0</span></div>
+                        <div class="info-item my-score">점수: <span id="myScore">0</span></div>
                         <div class="info-item timer">⏰ <span id="timer">3:00</span></div>
                     </div>
 
                     <div class="grid-wrapper">
                         <div class="grid-container" id="grid"></div>
+                        <div id="statusMessage">공격 받음!</div>
+                    </div>
+                    <div style="text-align: center; margin-top: 5px; color: #555; font-size: 14px;">
+                        상대를 클릭하여 공격 대상을 지정하세요 (기본: 랜덤)
                     </div>
                 </div>
 
-                <!-- 오른쪽 사이드바 -->
-                <div class="sidebar right" id="rightSidebar"></div>
+                <div class="sidebar" id="rightSidebar"></div>
             </div>
 
             <div class="game-bottom">
-                <div class="bottom-info">
-                    <div class="room-code-display">방 코드: <span id="gameRoomCode">0000</span></div>
-                    <div class="player-count">플레이어: <span id="playerCount">0/0</span></div>
-                </div>
-                <button class="btn btn-danger" onclick="leaveGame()">나가기</button>
+                <div>방 코드: <span id="gameRoomCode">0000</span></div>
+                <div>참가자: <span id="playerCount">0/0</span></div>
             </div>
         </div>
     </div>
