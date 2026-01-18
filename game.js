@@ -36,19 +36,32 @@ let gameState = {
 const audio = {
     bgm: null,
     pop: null,
-    volume: 0.5
+    volume: 0.5,
+    started: false // 오디오 시작 여부 체크
 };
 
 window.onload = function() {
     socket = io();
     setupAudio();
     setupSocketEvents();
+
+    // 화면 아무 곳이나 클릭/터치하면 배경음악 시작 (브라우저 정책 대응)
+    document.body.addEventListener('click', startAudioContext, { once: true });
+    document.body.addEventListener('touchstart', startAudioContext, { once: true });
 };
 
 function setupAudio() {
     audio.bgm = document.getElementById('bgm');
     audio.pop = document.getElementById('sfxPop');
     updateVolume(0.5);
+}
+
+// 최초 상호작용 시 오디오 시작
+function startAudioContext() {
+    if(!audio.started) {
+        audio.started = true;
+        playBGM();
+    }
 }
 
 function updateVolume(val) {
@@ -60,7 +73,11 @@ function updateVolume(val) {
 function playBGM() {
     if(audio.bgm && audio.bgm.paused) {
         audio.bgm.currentTime = 0;
-        audio.bgm.play().catch(e => console.log("Audio play blocked", e));
+        // 사용자 상호작용이 있어야만 play()가 성공함
+        audio.bgm.play().catch(e => {
+            console.log("BGM Autoplay prevented via browser policy. Waiting for interaction.");
+            audio.started = false; // 실패하면 다시 시도하도록
+        });
     }
 }
 
@@ -77,7 +94,8 @@ function hideAllScreens() {
         document.getElementById(id).classList.add('hidden');
     });
 }
-function showMenu() { hideAllScreens(); document.getElementById('menuScreen').classList.remove('hidden'); if(audio.bgm) audio.bgm.pause(); }
+function showMenu() { hideAllScreens(); document.getElementById('menuScreen').classList.remove('hidden'); }
+// 이미 타이틀에서 BGM이 나오고 있으므로 방 만들기 등에서 굳이 다시 playBGM 호출할 필요 없지만 안전장치로 유지
 function showCreateRoom() { hideAllScreens(); document.getElementById('createRoomScreen').classList.remove('hidden'); playBGM(); }
 function showJoinRoom() { hideAllScreens(); document.getElementById('joinRoomScreen').classList.remove('hidden'); playBGM(); }
 
@@ -129,7 +147,12 @@ function setupSocketEvents() {
     socket.on('playersUpdate', (players) => {
         gameState.players = players;
         updateWaitingRoom(players);
+        // 모바일 UI 대응을 위해 게임 중일 때도 업데이트
         if(gameState.isPlaying) updatePlayerPanels();
+        
+        // 게임 화면 하단 참가자 수 갱신
+        const cntEl = document.getElementById('playerCount');
+        if(cntEl) cntEl.textContent = `${players.length}/${gameState.maxPlayers}`;
     });
 
     socket.on('gameStarted', ({ mode, grid, specials, golds }) => {
@@ -213,7 +236,7 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
 function updateWaitingRoom(players) {
     const div = document.getElementById('waitingPlayers');
     div.innerHTML = players.map(p => 
-        `<div style="padding:10px; border:1px solid #ccc; background:white;">
+        `<div style="padding:10px; border:1px solid #ccc; background:white; font-size:14px;">
             ${p.name} ${p.isHost ? '👑' : ''}
         </div>`
     ).join('');
@@ -234,7 +257,7 @@ function initGameUI() {
     renderMyGrid();
     updatePlayerPanels();
     broadcastMyState();
-    resetHintTimer(); // 게임 시작 시 힌트 타이머 시작
+    resetHintTimer(); 
 }
 
 function updateTimerDisplay() {
@@ -291,12 +314,12 @@ function getElementFromPoint(x, y) {
 function onInputStart(e) {
     if(!gameState.isPlaying) return;
     
-    // 입력 시작 시 힌트 숨김 및 타이머 리셋
     hideHint();
     resetHintTimer();
 
+    // 터치 시 스크롤 등 기본 동작 방지 (게임판 내부에서만)
     if(e.type === 'touchstart') {
-        // e.preventDefault();
+       // e.preventDefault(); // 필요 시 주석 해제 (단, 전체 화면 확대/축소 막힘 주의)
     }
 
     const point = getPointFromEvent(e);
@@ -375,7 +398,6 @@ function checkScore() {
     const sum = gameState.selectedCells.reduce((acc, idx) => acc + gameState.grid[idx], 0);
     
     if(sum === 10) {
-        // 성공 시 힌트 타이머 리셋
         resetHintTimer();
         playSFX();
 
@@ -401,7 +423,6 @@ function checkScore() {
         
         if(goldTriggered) {
             showStatusMessage("황금 사과 효과!✨");
-            // 랜덤 기능 (50% 확률)
             if(Math.random() < 0.5) {
                 refillBoard();
                 showStatusMessage("보드 리필! 🔄");
@@ -421,7 +442,7 @@ function checkScore() {
 function resetHintTimer() {
     clearHintTimer();
     if(gameState.isPlaying) {
-        gameState.hintTimer = setTimeout(findAndShowHint, 15000); // 15초
+        gameState.hintTimer = setTimeout(findAndShowHint, 15000); 
     }
 }
 
@@ -443,13 +464,11 @@ function findAndShowHint() {
     const cols = 15;
     const rows = 10;
     
-    // 모든 가능한 사각형 조합 탐색
     for(let r1=0; r1<rows; r1++) {
         for(let c1=0; c1<cols; c1++) {
             for(let r2=r1; r2<rows; r2++) {
                 for(let c2=c1; c2<cols; c2++) {
                     
-                    // 사각형 내부 합 계산 및 유효성 검사
                     let sum = 0;
                     let valid = true;
                     const indices = [];
@@ -458,8 +477,6 @@ function findAndShowHint() {
                         for(let c=c1; c<=c2; c++) {
                             const idx = r * cols + c;
                             const val = gameState.grid[idx];
-                            
-                            // 빈칸이나 돌이 포함되면 무효
                             if(val === 0 || gameState.stones.includes(idx)) {
                                 valid = false;
                                 break;
@@ -471,12 +488,11 @@ function findAndShowHint() {
                     }
 
                     if(valid && sum === 10) {
-                        // 힌트 표시
                         indices.forEach(idx => {
                             const el = document.querySelector(`.apple[data-index="${idx}"]`);
                             if(el) el.classList.add('hint');
                         });
-                        return; // 하나 찾으면 종료
+                        return; 
                     }
                 }
             }
@@ -496,7 +512,7 @@ function updateSkillButton() {
     const btn = document.getElementById('skillBtn');
     if(gameState.hasSkill) {
         btn.style.display = 'inline-block';
-        btn.textContent = gameState.isUsingSkill ? "취소하기" : "✨ 사과 지우개";
+        btn.textContent = gameState.isUsingSkill ? "취소" : "✨ 지우개";
         btn.style.background = gameState.isUsingSkill ? "#f44336" : "#ffd700";
         btn.style.color = gameState.isUsingSkill ? "white" : "#8b4513";
     } else {
@@ -510,7 +526,7 @@ function toggleSkillMode() {
     gameState.isUsingSkill = !gameState.isUsingSkill;
     if(gameState.isUsingSkill) {
         document.body.classList.add('using-skill');
-        hideHint(); // 스킬 사용할 때 힌트 숨김
+        hideHint(); 
         resetHintTimer();
     } else {
         document.body.classList.remove('using-skill');
@@ -531,8 +547,6 @@ function useSingleRemoveSkill(idx) {
     gameState.isUsingSkill = false;
     document.body.classList.remove('using-skill');
     updateSkillButton();
-    
-    // 스킬 사용 후 힌트 리셋
     resetHintTimer();
 
     renderMyGrid();
@@ -597,7 +611,7 @@ function applyAttackEffect(type) {
             document.body.classList.remove('invisible-cursor');
         }, 30000);
     }
-    resetHintTimer(); // 공격 받아도 힌트 타이머 리셋
+    resetHintTimer(); 
     broadcastMyState(); 
 }
 
@@ -615,6 +629,11 @@ function updatePlayerPanels() {
     const leftSidebar = document.getElementById('leftSidebar');
     const rightSidebar = document.getElementById('rightSidebar');
     leftSidebar.innerHTML = ''; rightSidebar.innerHTML = '';
+    
+    // 모바일에서는 사이드바가 하나(leftSidebar)만 보이도록 하거나
+    // CSS 미디어 쿼리에서 flex order로 처리하므로 구조는 유지하되 
+    // 화면 크기에 따라 반반 나누거나 한쪽에 몰아 넣는 것이 좋음.
+    // 여기서는 기존대로 반반 나누고 CSS로 한 줄로 보이게 처리함.
     
     const half = Math.ceil(others.length / 2);
     
