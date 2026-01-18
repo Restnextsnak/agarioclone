@@ -141,7 +141,6 @@
         @keyframes goldGlow { from { filter: drop-shadow(0 0 2px gold); } to { filter: drop-shadow(0 0 8px gold); } }
         @keyframes hintBlink { from { filter: drop-shadow(0 0 2px lime); } to { filter: drop-shadow(0 0 10px lime); } }
         
-        /* [수정] 날아가는 사과 CSS */
         .flying-apple {
             position: fixed; width: 40px; height: 40px;
             background-size: contain; background-repeat: no-repeat; background-position: center;
@@ -206,7 +205,7 @@
         }
     </style>
 </head>
-<body onclick="playBGM()">
+<body onclick="startAudioContext()">
     <div class="game-container">
         <div id="menuScreen" class="menu-screen">
             <h1 style="font-size: 40px; color: #ff6b35; margin-bottom: 20px;">멀티 사과 배틀 🍎</h1>
@@ -353,7 +352,10 @@
         </div>
     </div>
 
-    <audio id="bgm" loop>
+    <audio id="bgmTitle" loop>
+        <source src="TitleBGM.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="bgmGame" loop>
         <source src="AppleGameBGM.mp3" type="audio/mpeg">
     </audio>
     <audio id="sfxPop">

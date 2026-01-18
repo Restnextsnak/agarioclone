@@ -34,8 +34,10 @@ let gameState = {
     cursorTimer: null 
 };
 
+// [수정] 오디오 객체 확장
 const audio = {
-    bgm: null,
+    bgmTitle: null,
+    bgmGame: null,
     pop: null,
     volume: 0.5,
     started: false 
@@ -50,8 +52,10 @@ window.onload = function() {
     document.body.addEventListener('touchstart', startAudioContext, { once: true });
 };
 
+// [수정] 오디오 초기화 및 함수 변경
 function setupAudio() {
-    audio.bgm = document.getElementById('bgm');
+    audio.bgmTitle = document.getElementById('bgmTitle');
+    audio.bgmGame = document.getElementById('bgmGame');
     audio.pop = document.getElementById('sfxPop');
     updateVolume(0.5);
 }
@@ -59,23 +63,44 @@ function setupAudio() {
 function startAudioContext() {
     if(!audio.started) {
         audio.started = true;
-        playBGM();
+        playTitleBGM(); // 시작 시 타이틀 음악 재생
     }
 }
 
 function updateVolume(val) {
     audio.volume = parseFloat(val);
-    if(audio.bgm) audio.bgm.volume = audio.volume * 0.5;
+    if(audio.bgmTitle) audio.bgmTitle.volume = audio.volume * 0.5;
+    if(audio.bgmGame) audio.bgmGame.volume = audio.volume * 0.5;
     if(audio.pop) audio.pop.volume = audio.volume;
 }
 
-function playBGM() {
-    if(audio.bgm && audio.bgm.paused) {
-        audio.bgm.currentTime = 0;
-        audio.bgm.play().catch(e => {
-            audio.started = false;
-        });
+// 타이틀 음악 재생 (게임 음악 정지)
+function playTitleBGM() {
+    if(!audio.started) return;
+    if(audio.bgmGame) {
+        audio.bgmGame.pause();
+        audio.bgmGame.currentTime = 0;
     }
+    if(audio.bgmTitle && audio.bgmTitle.paused) {
+        audio.bgmTitle.play().catch(()=>{});
+    }
+}
+
+// 게임 음악 재생 (타이틀 음악 정지)
+function playGameBGM() {
+    if(!audio.started) return;
+    if(audio.bgmTitle) {
+        audio.bgmTitle.pause();
+        audio.bgmTitle.currentTime = 0;
+    }
+    if(audio.bgmGame && audio.bgmGame.paused) {
+        audio.bgmGame.play().catch(()=>{});
+    }
+}
+
+function playBGM() {
+    // 호환성을 위해 남겨두거나 삭제. 
+    // 여기서는 화면 전환 함수에서 playTitleBGM/playGameBGM을 직접 호출하므로 비워둡니다.
 }
 
 function playSFX() {
@@ -91,9 +116,21 @@ function hideAllScreens() {
         document.getElementById(id).classList.add('hidden');
     });
 }
-function showMenu() { hideAllScreens(); document.getElementById('menuScreen').classList.remove('hidden'); }
-function showCreateRoom() { hideAllScreens(); document.getElementById('createRoomScreen').classList.remove('hidden'); playBGM(); }
-function showJoinRoom() { hideAllScreens(); document.getElementById('joinRoomScreen').classList.remove('hidden'); playBGM(); }
+function showMenu() { 
+    hideAllScreens(); 
+    document.getElementById('menuScreen').classList.remove('hidden'); 
+    playTitleBGM(); // 메뉴로 오면 타이틀 음악
+}
+function showCreateRoom() { 
+    hideAllScreens(); 
+    document.getElementById('createRoomScreen').classList.remove('hidden'); 
+    playTitleBGM(); 
+}
+function showJoinRoom() { 
+    hideAllScreens(); 
+    document.getElementById('joinRoomScreen').classList.remove('hidden'); 
+    playTitleBGM(); 
+}
 
 function toggleTimeSelect() {
     const mode = document.getElementById('gameMode').value;
@@ -240,7 +277,7 @@ function setupSocketEvents() {
         let msg = winner ? `우승: ${winner.name}!` : "게임 종료";
         msg += "\n\n[순위]\n" + scores.map((s,i) => `${i+1}. ${s.name} (${s.score}점)`).join("\n");
         alert(msg);
-        showMenu();
+        showMenu(); // 메뉴로 가면서 playTitleBGM 자동 호출됨
     });
 
     socket.on('error', (msg) => alert(msg));
@@ -254,6 +291,7 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
     document.getElementById('waitingCode').textContent = roomCode;
     document.getElementById('waitingModeDisplay').textContent = mode === 'timeattack' ? '<타임어택 모드>' : '<데스매치 모드>';
     document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
+    // 대기실에서는 타이틀 음악 유지
 }
 
 function updateWaitingRoom(players) {
@@ -267,6 +305,8 @@ function updateWaitingRoom(players) {
 
 /* --- 게임 로직 --- */
 function initGameUI() {
+    playGameBGM(); // [수정] 게임 시작 시 게임 음악 재생
+
     gameState.isPlaying = true;
     gameState.isSelecting = false;
     document.body.classList.remove('invisible-cursor');
@@ -337,7 +377,7 @@ function getElementFromPoint(x, y) {
 function onInputStart(e) {
     if(!gameState.isPlaying) return;
     
-    // [유지] 단순 터치는 힌트 초기화하지 않음
+    // 단순 터치는 힌트 초기화하지 않음
 
     const point = getPointFromEvent(e);
     
@@ -416,7 +456,7 @@ function checkScore() {
     const sum = gameState.selectedCells.reduce((acc, idx) => acc + gameState.grid[idx], 0);
     
     if(sum === 10) {
-        resetHintTimer();
+        resetHintTimer(); 
         playSFX();
 
         gameState.score += gameState.selectedCells.length;
@@ -424,25 +464,18 @@ function checkScore() {
         
         let goldTriggered = false;
 
-        // [수정] 독사과는 루프를 돌며 개별적으로 처리
         gameState.selectedCells.forEach(idx => {
-            // 독사과 처리
             if(gameState.specials.includes(idx)) {
-                // 공격 발동
                 triggerAttack();
-                // 투척 애니메이션 실행
                 playLocalPoisonAnimation(idx);
-                // 목록에서 제거
                 gameState.specials = gameState.specials.filter(s => s !== idx);
             }
             
-            // 황금사과 처리
             if(gameState.golds.includes(idx)) {
                 goldTriggered = true;
                 gameState.golds = gameState.golds.filter(g => g !== idx);
             }
             
-            // 사과 제거
             gameState.grid[idx] = 0; 
         });
         
@@ -464,11 +497,9 @@ function checkScore() {
     }
 }
 
-// [추가] 독사과 투척 애니메이션 (나에게만 보임)
 function playLocalPoisonAnimation(gridIndex) {
     let targetId = gameState.targetId;
     
-    // 타겟이 없거나(랜덤) 죽었으면 생존자 중 랜덤 선택 (비주얼용)
     if (!targetId) {
         const others = gameState.players.filter(p => p.id !== gameState.myId && !p.isDead);
         if (others.length > 0) {
@@ -476,29 +507,25 @@ function playLocalPoisonAnimation(gridIndex) {
         }
     }
     
-    if (!targetId) return; // 공격할 상대가 없음
+    if (!targetId) return;
 
     const targetEl = document.getElementById(`panel-${targetId}`);
     const appleEl = document.querySelector(`.apple[data-index="${gridIndex}"]`);
     
     if (!targetEl || !appleEl) return;
 
-    // 사과 위치와 타겟 위치 계산
     const startRect = appleEl.getBoundingClientRect();
     const endRect = targetEl.getBoundingClientRect();
 
-    // 날아가는 요소 생성
     const flying = document.createElement('div');
     flying.className = 'flying-apple';
-    // 독사과 이미지 적용
     flying.style.backgroundImage = "url('poison.png')";
     flying.style.backgroundSize = "contain";
     flying.style.backgroundColor = "transparent";
     flying.style.border = "none";
-    flying.style.boxShadow = "none"; // 기존 그림자 제거
-    flying.style.filter = "drop-shadow(0 0 5px #9c27b0)"; // 새 그림자
+    flying.style.boxShadow = "none"; 
+    flying.style.filter = "drop-shadow(0 0 5px #9c27b0)"; 
 
-    // 시작 위치 설정
     flying.style.left = `${startRect.left}px`;
     flying.style.top = `${startRect.top}px`;
     flying.style.width = `${startRect.width}px`;
@@ -506,17 +533,13 @@ function playLocalPoisonAnimation(gridIndex) {
     
     document.body.appendChild(flying);
 
-    // 강제 리플로우 (애니메이션 적용 위해)
     flying.getBoundingClientRect();
 
-    // 도착 위치 계산 (중앙 정렬)
     const endX = endRect.left + endRect.width/2 - startRect.width/2;
     const endY = endRect.top + endRect.height/2 - startRect.height/2;
 
-    // 이동
     flying.style.transform = `translate(${endX - startRect.left}px, ${endY - startRect.top}px)`;
     
-    // 애니메이션 후 제거
     setTimeout(() => { flying.remove(); }, 800);
 }
 
