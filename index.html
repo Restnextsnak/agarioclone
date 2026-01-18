@@ -14,14 +14,10 @@
             align-items: center;
             min-height: 100vh;
             padding: 20px;
-            overflow: hidden; /* 이펙트가 화면 밖으로 나가는 것 방지 */
+            overflow: hidden;
         }
 
-        /* 투명 마우스 효과 */
-        body.invisible-cursor, 
-        body.invisible-cursor * {
-            cursor: none !important;
-        }
+        body.invisible-cursor, body.invisible-cursor * { cursor: none !important; }
 
         .game-container {
             background: #ffd700;
@@ -34,7 +30,6 @@
             position: relative;
         }
 
-        /* 상단 헤더 */
         .game-header {
             background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
             border: 4px solid #fff;
@@ -64,7 +59,6 @@
             box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
         }
 
-        /* 메인 게임 영역 */
         .game-main {
             display: flex;
             gap: 15px;
@@ -73,36 +67,29 @@
             padding: 15px;
             border-radius: 10px;
             position: relative;
+            align-items: flex-start; /* 사이드바 높이 자연스럽게 */
         }
 
-        /* 사이드바 (플레이어 목록) */
+        /* 사이드바 */
         .sidebar {
-            flex: 0 0 220px;
+            flex: 0 0 240px; /* 너비를 조금 늘려서 미니맵 잘 보이게 */
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
         
-        .sidebar-title {
-            text-align: center;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        /* 플레이어 패널 */
+        /* 플레이어 패널 (미니맵 수정됨) */
         .player-panel {
             background: white;
             border: 3px solid #000;
             border-radius: 5px;
-            padding: 10px;
+            padding: 8px;
             transition: all 0.2s;
             cursor: pointer;
             position: relative;
         }
 
-        .player-panel:hover {
-            transform: scale(1.02);
-        }
+        .player-panel:hover { transform: scale(1.02); }
 
         .player-panel.target {
             border-color: #ff0000;
@@ -134,7 +121,32 @@
         .player-name { font-weight: bold; color: #d84315; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;}
         .player-score { font-weight: bold; color: #2e7d32; font-size: 16px; }
 
-        /* 중앙 게임 보드 */
+        /* --- 수정된 미니 그리드 스타일 --- */
+        .player-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr); /* 15칸 가로 */
+            gap: 1px; /* 간격 축소 */
+            margin-top: 5px;
+            width: 100%;
+            /* height: 60px;  <-- 삭제: 높이 제한 해제 */
+            /* overflow: hidden; <-- 삭제: 짤림 방지 */
+            background: #333; /* 배경색 추가로 빈틈 처리 */
+            padding: 1px;
+            border-radius: 2px;
+        }
+
+        .mini-apple {
+            width: 100%;
+            aspect-ratio: 1; /* 정사각형 유지 */
+            background: #ff6b6b;
+            border-radius: 50%; /* 원형 유지 */
+        }
+        
+        .mini-apple.empty { background: #ddd; border-radius: 0; } /* 빈칸은 네모나게 혹은 흐리게 */
+        .mini-apple.special { background: #9c27b0; box-shadow: 0 0 2px #fff; }
+        .mini-apple.stone { background: #7f8c8d; }
+        /* -------------------------------- */
+
         .game-center { flex: 1; display: flex; flex-direction: column; }
 
         .game-info {
@@ -153,7 +165,6 @@
         .timer { color: #1976d2; }
         .timer.urgent { color: red; animation: pulse 1s infinite; }
 
-        /* 그리드 */
         .grid-wrapper {
             background: #c8a2c8;
             border: 4px solid #000;
@@ -164,7 +175,6 @@
             justify-content: center;
         }
         
-        /* 상태 메시지 (공격 받음 등) */
         #statusMessage {
             position: absolute;
             top: 50%;
@@ -178,6 +188,7 @@
             z-index: 500;
             display: none;
             text-align: center;
+            width: 100%;
         }
 
         .grid-container {
@@ -208,7 +219,6 @@
             transition: transform 0.1s;
         }
         
-        /* 특수 사과 (보라색) */
         .apple.special {
             background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
             border-color: #e1bee7;
@@ -216,10 +226,8 @@
             animation: glow 1.5s infinite alternate;
         }
 
-        /* 돌 사과 */
         .apple.stone {
             background: #7f8c8d;
-            background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxmaWx0ZXIgaWQ9Im4iPjxmZVR1cmJ1bGVuY2UgdHlwZT0iZnJhY3RhbE5vaXNlIiBiYXNlRnJlcXVlbmN5PSIwLjUiIG51bU9jdGF2ZXM9IjEiIHN0aXRjaFRpbGVzPSJzdGl0Y2giLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ0cmFuc3BhcmVudCIvPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNuKSIgb3BhY2l0eT0iMC41Ii8+PC9zdmc+');
             border-color: #555;
             color: #ccc;
             cursor: not-allowed;
@@ -227,8 +235,6 @@
         }
 
         .apple:hover { transform: scale(1.05); }
-        .apple.stone:hover { transform: scale(0.9); }
-
         .apple.selecting {
             background: linear-gradient(135deg, #ffd93d 0%, #ffb400 100%);
             border-color: #ff6b35;
@@ -238,11 +244,9 @@
 
         .apple.empty { background: #ddd; border-color: #999; cursor: default; opacity: 0.3; }
 
-        /* 애니메이션 */
         @keyframes glow { from { box-shadow: 0 0 5px #9c27b0; } to { box-shadow: 0 0 20px #9c27b0; } }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
         
-        /* 날아가는 사과 이펙트 */
         .flying-apple {
             position: fixed;
             width: 40px;
@@ -256,7 +260,6 @@
             box-shadow: 0 0 15px #9c27b0;
         }
 
-        /* 하단 컨트롤 및 메뉴들은 유지하되 스타일 일부 조정 */
         .game-bottom { background: #ffd93d; border: 3px solid #000; padding: 15px; margin-top: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
         .btn { padding: 12px 20px; border: 3px solid #000; border-radius: 5px; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 #000; }
         .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #000; }
@@ -271,14 +274,6 @@
         .form-group input, .form-group select { width: 100%; padding: 10px; border: 2px solid #000; border-radius: 5px; }
         
         .hidden { display: none !important; }
-        
-        /* 미니 그리드 (상대방) */
-        .player-mini-grid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 1px; margin-top: 5px; height: 60px; overflow: hidden; }
-        .mini-apple { width: 100%; padding-top: 100%; background: #ff6b6b; border-radius: 50%; }
-        .mini-apple.empty { background: #ddd; }
-        .mini-apple.special { background: #9c27b0; }
-        .mini-apple.stone { background: #7f8c8d; }
-
     </style>
 </head>
 <body>
