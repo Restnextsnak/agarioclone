@@ -150,7 +150,6 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`[연결 해제] ${socket.id}`);
         
-        // 모든 방에서 플레이어 제거
         rooms.forEach((room, code) => {
             leaveRoom(socket, code);
         });
@@ -173,18 +172,15 @@ function leaveRoom(socket, roomCode) {
     console.log(`[방 나가기] ${roomCode}: ${player.name}`);
     
     if (room.players.length === 0) {
-        // 방이 비면 삭제
         rooms.delete(roomCode);
         console.log(`[방 삭제] ${roomCode}`);
     } else {
-        // 방장이 나갔으면 다음 사람을 방장으로
         if (player.isHost && room.players.length > 0) {
             room.players[0].isHost = true;
         }
         
         io.to(roomCode).emit('playersUpdate', room.players);
         
-        // 게임 중이었다면 종료
         if (room.isPlaying) {
             endGame(roomCode);
         }
@@ -198,7 +194,6 @@ function endGame(roomCode) {
     
     room.isPlaying = false;
     
-    // 점수 순으로 정렬
     const scores = room.players
         .map(p => ({ name: p.name, score: p.score }))
         .sort((a, b) => b.score - a.score);
@@ -210,7 +205,7 @@ function endGame(roomCode) {
     console.log(`[게임 종료] ${roomCode}, 승자: ${winner.name} (${winner.score}점)`);
 }
 
-// 서버 시작
+// 서버 시작 (Render의 PORT 환경변수 사용)
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
     console.log('═══════════════════════════════════════');

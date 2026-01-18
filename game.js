@@ -20,11 +20,8 @@ let gameState = {
 
 // 초기화
 window.onload = function() {
-    // Socket.IO 연결
-    const socketUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:3000' 
-        : window.location.origin;
-    socket = io(socketUrl);
+    // Socket.IO 연결 (자동 도메인 감지)
+    socket = io();
     
     setupSocketEvents();
 };
@@ -142,16 +139,22 @@ function setupSocketEvents() {
     socket.on('gridUpdate', ({ grid, playerId, score }) => {
         gameState.grid = grid;
         
-        // 다른 플레이어 점수 업데이트
+        // 다른 플레이어 점수 업데이트 (항상 반영)
         const player = gameState.players.find(p => p.id === playerId);
         if (player) {
             player.score = score;
             updatePlayerPanels();
         }
         
-        // 내 화면 아님 - 그리드 업데이트
+        // 내 화면 그리드 업데이트
+        // 중요: 내가 드래그 중일 때(isSelecting)는 그리드를 갱신하지 않음 (드래그 끊김 방지)
         if (playerId !== socket.id) {
-            renderGrid();
+            if (!gameState.isSelecting) {
+                renderGrid();
+            } else {
+                // 선택 중일 때는 업데이트를 시각적으로 미룸 (UX 최적화)
+                // console.log('드래그 중이라 그리드 갱신 보류');
+            }
         }
     });
 
@@ -204,6 +207,7 @@ function initGame() {
     gameState.score = 0;
     gameState.time = 180;
     gameState.isPlaying = true;
+    gameState.isSelecting = false; // 선택 상태 초기화
     
     document.getElementById('myScore').textContent = '0';
     document.getElementById('gameRoomCode').textContent = gameState.roomCode;
@@ -215,7 +219,7 @@ function initGame() {
     startTimer();
 }
 
-// 그리드 렌더링
+// 그리드 렌더링 (모바일 터치 지원 추가)
 function renderGrid() {
     const gridContainer = document.getElementById('grid');
     gridContainer.innerHTML = '';
@@ -233,16 +237,53 @@ function renderGrid() {
         gridContainer.appendChild(apple);
     });
     
-    // 드래그 이벤트
+    // 마우스 이벤트
     gridContainer.addEventListener('mousedown', onMouseDown);
     gridContainer.addEventListener('mousemove', onMouseMove);
     gridContainer.addEventListener('mouseup', onMouseUp);
+
+    // [추가] 모바일 터치 이벤트 지원
+    gridContainer.addEventListener('touchstart', (e) => {
+        e.preventDefault(); // 스크롤 방지
+        if (e.touches.length > 1) return; // 멀티터치 방지
+        const touch = e.touches[0];
+        
+        // 마우스 다운 이벤트 흉내내기
+        onMouseDown({
+            target: e.target, // 실제 터치된 요소
+            currentTarget: gridContainer,
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            preventDefault: () => {}
+        });
+    }, { passive: false });
+
+    gridContainer.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // 스크롤 방지
+        if (!gameState.isSelecting) return;
+        const touch = e.touches[0];
+        
+        // 마우스 무브 이벤트 흉내내기
+        onMouseMove({
+            currentTarget: gridContainer,
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            preventDefault: () => {}
+        });
+    }, { passive: false });
+
+    gridContainer.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        // 마우스 업 이벤트 흉내내기
+        onMouseUp();
+    });
 }
 
 // 드래그 시작
 function onMouseDown(e) {
     if (!gameState.isPlaying) return;
-    if (e.target.classList.contains('empty')) return;
+    // 터치 시 e.target이 정확하지 않을 수 있으므로 안전장치
+    if (e.target.classList.contains('empty') || !e.target.classList.contains('apple')) return;
     
     gameState.isSelecting = true;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -275,6 +316,10 @@ function onMouseUp(e) {
     gameState.isSelecting = false;
     checkSelection();
     clearSelection();
+    
+    // 드래그가 끝나면 혹시 밀려있던 그리드 업데이트를 위해 
+    // 서버 그리드 상태와 동기화 (선택적)
+    // renderGrid(); 
 }
 
 // 선택 영역 업데이트
@@ -320,7 +365,7 @@ function checkSelection() {
     
     if (sum === 10) {
         // 성공!
-        gameState.score += 100;
+        gameState.score += 100; // 점수 계산 방식
         document.getElementById('myScore').textContent = gameState.score;
         
         // 선택된 사과 제거 (0으로 설정)
