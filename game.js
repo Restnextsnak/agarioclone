@@ -28,7 +28,7 @@ let gameState = {
     selectedCells: [],
     
     // 스킬 및 힌트 로직
-    skillCount: 0, // [필수 요청 5] 아이템 중첩을 위한 카운트 변수
+    skillCount: 0,
     isUsingSkill: false,
     hintTimer: null
 };
@@ -107,7 +107,6 @@ function createRoom() {
     const mode = document.getElementById('gameMode').value;
     const timeLimit = parseInt(document.getElementById('timeLimit').value);
     
-    // [필수 요청 2] 설정값 가져오기
     const goldCount = parseInt(document.getElementById('goldCount').value);
     const specialCount = parseInt(document.getElementById('specialCount').value);
 
@@ -161,7 +160,7 @@ function setupSocketEvents() {
         gameState.stones = [];
         gameState.score = 0;
         gameState.targetId = null;
-        gameState.skillCount = 0; // 초기화
+        gameState.skillCount = 0; 
         gameState.isUsingSkill = false;
         
         hideAllScreens();
@@ -315,9 +314,6 @@ function onInputStart(e) {
     hideHint();
     resetHintTimer();
 
-    // 모바일 터치 시 기본 동작 유지 (스크롤 등 필요할 수 있음)
-    // 단, 그리드 내에서의 드래그가 스크롤을 유발하면 안되므로 preventDefault는 onInputMove에서 처리
-
     const point = getPointFromEvent(e);
     
     // 스킬 사용 모드
@@ -339,7 +335,6 @@ function onInputStart(e) {
 function onInputMove(e) {
     if(!gameState.isSelecting || gameState.isUsingSkill) return;
     
-    // 게임판 안에서 드래그 중일 땐 화면 스크롤 방지
     if(e.type === 'touchmove') e.preventDefault();
 
     const point = getPointFromEvent(e);
@@ -427,7 +422,6 @@ function checkScore() {
                 refillBoard();
                 showStatusMessage("보드 리필! 🔄");
             } else {
-                // [필수 요청 5] 아이템 중첩
                 gameState.skillCount++;
                 updateSkillButton();
                 showStatusMessage(`스킬 획득! (+1)`);
@@ -443,7 +437,8 @@ function checkScore() {
 function resetHintTimer() {
     clearHintTimer();
     if(gameState.isPlaying) {
-        gameState.hintTimer = setTimeout(findAndShowHint, 15000); 
+        // [수정] 15초 -> 10초
+        gameState.hintTimer = setTimeout(findAndShowHint, 10000); 
     }
 }
 
@@ -509,7 +504,6 @@ function refillBoard() {
     }
 }
 
-// [필수 요청 5] 중첩된 스킬 개수 표시
 function updateSkillButton() {
     const btn = document.getElementById('skillBtn');
     if(gameState.skillCount > 0) {
@@ -545,7 +539,6 @@ function useSingleRemoveSkill(idx) {
     gameState.specials = gameState.specials.filter(s => s !== idx);
     gameState.golds = gameState.golds.filter(g => g !== idx);
 
-    // [필수 요청 5] 스킬 사용 시 차감
     gameState.skillCount--;
     gameState.isUsingSkill = false;
     document.body.classList.remove('using-skill');
@@ -597,7 +590,9 @@ function applyAttackEffect(type) {
         showStatusMessage("돌 사과 발생!");
         const candidates = gameState.grid.map((v, i) => v > 0 ? i : -1).filter(i => i !== -1);
         candidates.sort(() => Math.random() - 0.5);
-        gameState.stones = candidates.slice(0, 10);
+        
+        // [수정] 10개 -> 20개
+        gameState.stones = candidates.slice(0, 20);
         renderMyGrid();
         
         setTimeout(() => {
@@ -610,9 +605,11 @@ function applyAttackEffect(type) {
         if(document.body.classList.contains('invisible-cursor')) return; 
         showStatusMessage("마우스가 사라졌습니다!");
         document.body.classList.add('invisible-cursor');
+        
+        // [수정] 30초 -> 20초
         setTimeout(() => {
             document.body.classList.remove('invisible-cursor');
-        }, 30000);
+        }, 20000);
     }
     resetHintTimer(); 
     broadcastMyState(); 
