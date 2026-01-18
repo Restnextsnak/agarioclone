@@ -20,10 +20,10 @@
             padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             max-width: 1400px; width: 100%; position: relative;
             display: flex; flex-direction: column;
-            max-height: 95vh; /* 모바일 높이 제한 */
+            max-height: 95vh;
         }
 
-        /* --- 개발자 정보 (수정됨) --- */
+        /* --- 개발자 정보 및 복사 기능 스타일 --- */
         .dev-info {
             margin-top: 30px;
             padding: 15px;
@@ -37,6 +37,25 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .dev-info strong { color: #d84315; font-size: 16px; display: block; margin-bottom: 5px; }
+        
+        /* 복사 가능한 텍스트 스타일 */
+        .copy-text {
+            cursor: pointer;
+            font-weight: bold;
+            color: #333;
+            transition: color 0.2s;
+            padding: 2px 5px;
+            border-radius: 4px;
+            background: #eee;
+        }
+        .copy-text:hover {
+            color: #d84315;
+            background: #ffe0b2;
+            text-decoration: underline;
+        }
+        .copy-text:active {
+            background: #ffcc80;
+        }
 
         .game-header {
             background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
@@ -53,7 +72,7 @@
         .game-main {
             display: flex; gap: 15px; background: #87ceeb; border: 4px solid #000;
             padding: 10px; border-radius: 10px; position: relative; align-items: flex-start;
-            flex: 1; overflow: hidden; /* 내부 스크롤 제어 */
+            flex: 1; overflow: hidden;
         }
 
         .sidebar { 
@@ -189,13 +208,12 @@
         
         .hidden { display: none !important; }
 
-        /* --- 모바일 반응형 CSS (핵심) --- */
         @media (max-width: 1024px) {
             .game-main { flex-direction: column; align-items: center; }
             .sidebar { 
                 width: 100%; flex: none; flex-direction: row; gap: 5px; 
                 overflow-x: auto; padding-bottom: 5px;
-                order: 2; /* 그리드 아래로 내리기 */
+                order: 2;
             }
             .player-panel { min-width: 120px; }
             .game-center { width: 100%; order: 1; margin-bottom: 10px; }
@@ -207,10 +225,9 @@
             .game-title { font-size: 20px; }
             .btn { padding: 8px 12px; font-size: 14px; }
             
-            /* 그리드 반응형 (화면 꽉 차게) */
             .apple { 
                 width: 5.5vw; height: 5.5vw; 
-                max-width: 40px; max-height: 40px; /* PC에서는 너무 커지지 않게 */
+                max-width: 40px; max-height: 40px;
                 font-size: 12px; border-width: 1px;
             }
             .grid-container { gap: 1px; padding: 1px; }
@@ -235,7 +252,9 @@
 
                 <div class="dev-info">
                     <strong>밤 새는 개발자에게 커피 사주기 ☕</strong>
-                    하나은행 50991074280107<br>
+                    <span class="copy-text" onclick="copyToClipboard('50991074280107')" title="클릭하여 계좌번호 복사">
+                        하나은행 50991074280107
+                    </span><br>
                     <span style="font-size: 0.9em; color: #666; margin-top: 5px; display:block;">개발자: 레부니 (strongest5644@gmail.com)</span>
                     <div style="margin-top: 5px; font-size: 11px; color: #999;">(화면을 터치하면 노래가 나옵니다)</div>
                 </div>
@@ -367,5 +386,31 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
+    
+    <script>
+        function copyToClipboard(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('계좌번호가 복사되었습니다: ' + text);
+                }).catch(err => {
+                    console.error('복사 실패:', err);
+                    prompt('Ctrl+C를 눌러 복사하세요:', text);
+                });
+            } else {
+                // 구형 브라우저 대응
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('계좌번호가 복사되었습니다: ' + text);
+                } catch (err) {
+                    prompt('Ctrl+C를 눌러 복사하세요:', text);
+                }
+                document.body.removeChild(textArea);
+            }
+        }
+    </script>
 </body>
 </html>
