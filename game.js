@@ -182,17 +182,16 @@ function setupSocketEvents() {
         initGameUI();
     });
 
-    // [추가] 판 새로고침 (교착 상태 해결)
     socket.on('gridRegenerated', ({ grid, specials, golds }) => {
         showStatusMessage("판이 교체되었습니다! 🔄");
         gameState.grid = grid;
         gameState.specials = specials;
         gameState.golds = golds;
-        gameState.stones = []; // 새 판이므로 돌 초기화
+        gameState.stones = []; 
         
         renderMyGrid();
         broadcastMyState();
-        resetHintTimer(); // 힌트 타이머도 리셋
+        resetHintTimer(); 
     });
 
     socket.on('monitorUpdate', ({ playerId, grid, specials, golds, stones, score }) => {
@@ -338,9 +337,7 @@ function getElementFromPoint(x, y) {
 function onInputStart(e) {
     if(!gameState.isPlaying) return;
     
-    // [수정] 터치 시 힌트 숨기기 및 타이머 리셋 제거
-    // 사용자가 '점수를 못 먹는 상황'을 측정해야 하므로, 단순 터치로는 리셋하지 않음.
-    // hideHint()도 제거하여 사용자가 드래그하는 동안 힌트가 유지되도록 함.
+    // [유지] 단순 터치는 힌트 초기화하지 않음
 
     const point = getPointFromEvent(e);
     
@@ -419,28 +416,35 @@ function checkScore() {
     const sum = gameState.selectedCells.reduce((acc, idx) => acc + gameState.grid[idx], 0);
     
     if(sum === 10) {
-        resetHintTimer(); // [유지] 점수 획득 시 타이머 리셋
+        resetHintTimer();
         playSFX();
 
         gameState.score += gameState.selectedCells.length;
         document.getElementById('myScore').textContent = gameState.score;
         
-        let attackTriggered = false;
         let goldTriggered = false;
 
+        // [수정] 독사과는 루프를 돌며 개별적으로 처리
         gameState.selectedCells.forEach(idx => {
+            // 독사과 처리
             if(gameState.specials.includes(idx)) {
-                attackTriggered = true;
+                // 공격 발동
+                triggerAttack();
+                // 투척 애니메이션 실행
+                playLocalPoisonAnimation(idx);
+                // 목록에서 제거
                 gameState.specials = gameState.specials.filter(s => s !== idx);
             }
+            
+            // 황금사과 처리
             if(gameState.golds.includes(idx)) {
                 goldTriggered = true;
                 gameState.golds = gameState.golds.filter(g => g !== idx);
             }
+            
+            // 사과 제거
             gameState.grid[idx] = 0; 
         });
-        
-        if(attackTriggered) triggerAttack();
         
         if(goldTriggered) {
             showStatusMessage("황금 사과 효과!✨");
@@ -460,26 +464,77 @@ function checkScore() {
     }
 }
 
-/* --- 교착 상태 (판 깨기 불가) 확인 및 처리 --- */
+// [추가] 독사과 투척 애니메이션 (나에게만 보임)
+function playLocalPoisonAnimation(gridIndex) {
+    let targetId = gameState.targetId;
+    
+    // 타겟이 없거나(랜덤) 죽었으면 생존자 중 랜덤 선택 (비주얼용)
+    if (!targetId) {
+        const others = gameState.players.filter(p => p.id !== gameState.myId && !p.isDead);
+        if (others.length > 0) {
+            targetId = others[Math.floor(Math.random() * others.length)].id;
+        }
+    }
+    
+    if (!targetId) return; // 공격할 상대가 없음
+
+    const targetEl = document.getElementById(`panel-${targetId}`);
+    const appleEl = document.querySelector(`.apple[data-index="${gridIndex}"]`);
+    
+    if (!targetEl || !appleEl) return;
+
+    // 사과 위치와 타겟 위치 계산
+    const startRect = appleEl.getBoundingClientRect();
+    const endRect = targetEl.getBoundingClientRect();
+
+    // 날아가는 요소 생성
+    const flying = document.createElement('div');
+    flying.className = 'flying-apple';
+    // 독사과 이미지 적용
+    flying.style.backgroundImage = "url('poison.png')";
+    flying.style.backgroundSize = "contain";
+    flying.style.backgroundColor = "transparent";
+    flying.style.border = "none";
+    flying.style.boxShadow = "none"; // 기존 그림자 제거
+    flying.style.filter = "drop-shadow(0 0 5px #9c27b0)"; // 새 그림자
+
+    // 시작 위치 설정
+    flying.style.left = `${startRect.left}px`;
+    flying.style.top = `${startRect.top}px`;
+    flying.style.width = `${startRect.width}px`;
+    flying.style.height = `${startRect.height}px`;
+    
+    document.body.appendChild(flying);
+
+    // 강제 리플로우 (애니메이션 적용 위해)
+    flying.getBoundingClientRect();
+
+    // 도착 위치 계산 (중앙 정렬)
+    const endX = endRect.left + endRect.width/2 - startRect.width/2;
+    const endY = endRect.top + endRect.height/2 - startRect.height/2;
+
+    // 이동
+    flying.style.transform = `translate(${endX - startRect.left}px, ${endY - startRect.top}px)`;
+    
+    // 애니메이션 후 제거
+    setTimeout(() => { flying.remove(); }, 800);
+}
+
 function checkAndHandleDeadlock() {
     if (!hasValidMove()) {
         socket.emit('requestGridRegen', gameState.roomCode);
     }
 }
 
-/* --- 유효한 움직임이 있는지 전수 조사 --- */
 function hasValidMove() {
     const cols = 15;
     const rows = 10;
-    
     for(let r1=0; r1<rows; r1++) {
         for(let c1=0; c1<cols; c1++) {
             for(let r2=r1; r2<rows; r2++) {
                 for(let c2=c1; c2<cols; c2++) {
-                    
                     let sum = 0;
                     let valid = true;
-
                     for(let r=r1; r<=r2; r++) {
                         for(let c=c1; c<=c2; c++) {
                             const idx = r * cols + c;
@@ -492,10 +547,7 @@ function hasValidMove() {
                         }
                         if(!valid) break;
                     }
-
-                    if(valid && sum === 10) {
-                        return true; 
-                    }
+                    if(valid && sum === 10) return true; 
                 }
             }
         }
@@ -503,7 +555,6 @@ function hasValidMove() {
     return false; 
 }
 
-/* --- 힌트 시스템 --- */
 function resetHintTimer() {
     clearHintTimer();
     if(gameState.isPlaying) {
@@ -533,11 +584,9 @@ function findAndShowHint() {
         for(let c1=0; c1<cols; c1++) {
             for(let r2=r1; r2<rows; r2++) {
                 for(let c2=c1; c2<cols; c2++) {
-                    
                     let sum = 0;
                     let valid = true;
                     const indices = [];
-
                     for(let r=r1; r<=r2; r++) {
                         for(let c=c1; c<=c2; c++) {
                             const idx = r * cols + c;
@@ -551,7 +600,6 @@ function findAndShowHint() {
                         }
                         if(!valid) break;
                     }
-
                     if(valid && sum === 10) {
                         indices.forEach(idx => {
                             const el = document.querySelector(`.apple[data-index="${idx}"]`);
