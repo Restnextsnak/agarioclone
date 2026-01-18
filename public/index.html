@@ -1,351 +1,535 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agar Clone</title>
+    <title>멀티 사과 게임</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif; }
-        canvas { border: 1px solid #555; background-color: #333; }
-        #nameScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 100; }
-        #nameScreen input { padding: 10px; font-size: 1.2em; border: none; border-radius: 5px; margin-bottom: 10px; text-align: center; }
-        #nameScreen button { padding: 10px 20px; font-size: 1.2em; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #nameScreen button:hover { background-color: #45a049; }
-        #joystick-container { position: absolute; bottom: 20px; left: 20px; width: 150px; height: 150px; background-color: rgba(255, 255, 255, 0.2); border-radius: 50%; display: none; /* Hidden by default */ }
-        #joystick { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; background-color: rgba(255, 255, 255, 0.5); border-radius: 50%; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #ffb347;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .game-container {
+            background: #ffd700;
+            border: 8px solid #8b4513;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 1400px;
+            width: 100%;
+        }
+
+        /* 상단 헤더 */
+        .game-header {
+            background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
+            border: 4px solid #fff;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: inset 0 -5px 10px rgba(0,0,0,0.3);
+        }
+
+        .game-title {
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 4px 4px 0px #000;
+            letter-spacing: 2px;
+        }
+
+        /* 메인 게임 영역 */
+        .game-main {
+            display: flex;
+            gap: 15px;
+            background: #87ceeb;
+            border: 4px solid #000;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        /* 사이드바 */
+        .sidebar {
+            flex: 0 0 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .sidebar.left {
+            background: repeating-linear-gradient(
+                45deg,
+                #98fb98,
+                #98fb98 20px,
+                #90ee90 20px,
+                #90ee90 40px
+            );
+            border: 3px solid #000;
+            padding: 10px;
+        }
+
+        .sidebar.right {
+            background: repeating-linear-gradient(
+                45deg,
+                #98fb98,
+                #98fb98 20px,
+                #90ee90 20px,
+                #90ee90 40px
+            );
+            border: 3px solid #000;
+            padding: 10px;
+        }
+
+        /* 플레이어 패널 */
+        .player-panel {
+            background: white;
+            border: 3px solid #000;
+            border-radius: 5px;
+            padding: 10px;
+            min-height: 100px;
+        }
+
+        .player-info {
+            margin-bottom: 10px;
+        }
+
+        .player-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #d84315;
+            margin-bottom: 5px;
+        }
+
+        .player-score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2e7d32;
+        }
+
+        .player-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 1px;
+            margin-top: 5px;
+        }
+
+        .mini-apple {
+            aspect-ratio: 1;
+            background: #ff6b6b;
+            border-radius: 50%;
+            font-size: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .mini-apple.empty {
+            background: #ddd;
+        }
+
+        /* 중앙 게임 보드 */
+        .game-center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .game-info {
+            background: #ffd93d;
+            border: 3px solid #000;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .info-item {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .my-score {
+            color: #d84315;
+        }
+
+        .timer {
+            color: #1976d2;
+        }
+
+        /* 게임 그리드 */
+        .grid-wrapper {
+            background: #c8a2c8;
+            border: 4px solid #000;
+            padding: 15px;
+            border-radius: 10px;
+            position: relative;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            gap: 3px;
+            background: #000;
+            padding: 3px;
+            border-radius: 5px;
+        }
+
+        .apple {
+            aspect-ratio: 1;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+
+        .apple:hover {
+            transform: scale(1.05);
+        }
+
+        .apple.selecting {
+            background: linear-gradient(135deg, #ffd93d 0%, #ffb400 100%);
+            border-color: #ff6b35;
+            transform: scale(1.1);
+            z-index: 10;
+        }
+
+        .apple.empty {
+            background: #ddd;
+            border-color: #999;
+            cursor: default;
+            opacity: 0.3;
+        }
+
+        /* 선택 박스 */
+        .selection-box {
+            position: absolute;
+            border: 3px dashed #ff6b35;
+            background: rgba(255, 107, 53, 0.2);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* 하단 컨트롤 */
+        .game-bottom {
+            background: #ffd93d;
+            border: 3px solid #000;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .bottom-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .room-code-display {
+            font-size: 20px;
+            font-weight: bold;
+            color: #d84315;
+        }
+
+        .player-count {
+            font-size: 16px;
+            color: #1976d2;
+        }
+
+        /* 버튼 */
+        .btn {
+            padding: 12px 30px;
+            border: 3px solid #000;
+            border-radius: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 #000;
+        }
+
+        .btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #000;
+        }
+
+        .btn-primary {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        /* 메뉴 화면 */
+        .menu-screen {
+            text-align: center;
+            padding: 50px;
+        }
+
+        .menu-title {
+            font-size: 72px;
+            font-weight: bold;
+            color: #ff6b35;
+            text-shadow: 4px 4px 0px #000;
+            margin-bottom: 30px;
+        }
+
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+            margin-top: 40px;
+        }
+
+        .menu-button {
+            width: 300px;
+            padding: 20px;
+            font-size: 24px;
+        }
+
+        /* 방 설정 */
+        .room-setup {
+            background: white;
+            border: 4px solid #000;
+            border-radius: 10px;
+            padding: 40px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .room-setup h2 {
+            font-size: 32px;
+            color: #d84315;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 3px solid #000;
+            border-radius: 5px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 대기실 */
+        .waiting-room {
+            text-align: center;
+            padding: 50px;
+        }
+
+        .waiting-code {
+            font-size: 80px;
+            font-weight: bold;
+            color: #ff6b35;
+            letter-spacing: 15px;
+            margin: 30px 0;
+            text-shadow: 3px 3px 0 #000;
+        }
+
+        .waiting-players {
+            background: white;
+            border: 3px solid #000;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .waiting-player {
+            font-size: 20px;
+            padding: 10px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .waiting-player:last-child {
+            border-bottom: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        /* 반응형 */
+        @media (max-width: 1200px) {
+            .game-main {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                flex: 0 0 auto;
+            }
+
+            .player-panel {
+                display: flex;
+                gap: 20px;
+            }
+        }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    <div id="nameScreen">
-        <h1>Enter Your Name</h1>
-        <input type="text" id="playerNameInput" placeholder="Your Name">
-        <button id="playButton">Play</button>
-    </div>
-    <div id="joystick-container">
-        <div id="joystick"></div>
+    <div class="game-container">
+        <!-- 메뉴 화면 -->
+        <div id="menuScreen" class="menu-screen">
+            <div class="menu-title">멀티 사과 게임</div>
+            <div style="font-size: 100px;">🍎</div>
+            <div class="menu-buttons">
+                <button class="btn btn-primary menu-button" onclick="showCreateRoom()">방 만들기</button>
+                <button class="btn btn-secondary menu-button" onclick="showJoinRoom()">방 참가하기</button>
+            </div>
+        </div>
+
+        <!-- 방 만들기 화면 -->
+        <div id="createRoomScreen" class="hidden">
+            <div class="room-setup">
+                <h2>방 만들기</h2>
+                <div class="form-group">
+                    <label>플레이어 이름</label>
+                    <input type="text" id="hostName" placeholder="이름 입력" maxlength="10" />
+                </div>
+                <div class="form-group">
+                    <label>최대 인원</label>
+                    <select id="maxPlayers">
+                        <option value="2">2명</option>
+                        <option value="3">3명</option>
+                        <option value="4">4명</option>
+                        <option value="5">5명</option>
+                        <option value="6">6명</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 30px;">
+                    <button class="btn btn-primary" onclick="createRoom()" style="flex: 1;">방 만들기</button>
+                    <button class="btn btn-danger" onclick="showMenu()">취소</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 방 참가 화면 -->
+        <div id="joinRoomScreen" class="hidden">
+            <div class="room-setup">
+                <h2>방 참가하기</h2>
+                <div class="form-group">
+                    <label>플레이어 이름</label>
+                    <input type="text" id="guestName" placeholder="이름 입력" maxlength="10" />
+                </div>
+                <div class="form-group">
+                    <label>방 코드</label>
+                    <input type="text" id="roomCodeInput" placeholder="4자리 코드" maxlength="4" />
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 30px;">
+                    <button class="btn btn-primary" onclick="joinRoom()" style="flex: 1;">참가하기</button>
+                    <button class="btn btn-danger" onclick="showMenu()">취소</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 대기실 -->
+        <div id="waitingRoom" class="hidden">
+            <div class="waiting-room">
+                <h2 style="font-size: 36px; color: #d84315;">대기실</h2>
+                <div class="waiting-code" id="waitingCode">0000</div>
+                <p style="font-size: 20px; color: #666;">위 코드를 친구에게 알려주세요!</p>
+                
+                <div class="waiting-players" id="waitingPlayers">
+                    <!-- 플레이어 목록 -->
+                </div>
+                
+                <div style="margin-top: 30px;">
+                    <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" style="display: none;">게임 시작</button>
+                    <button class="btn btn-danger" onclick="leaveRoom()">나가기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 게임 화면 -->
+        <div id="gameScreen" class="hidden">
+            <div class="game-header">
+                <div class="game-title">멀티 사과 게임 🍎</div>
+            </div>
+
+            <div class="game-main">
+                <!-- 왼쪽 사이드바 -->
+                <div class="sidebar left" id="leftSidebar"></div>
+
+                <!-- 중앙 게임 보드 -->
+                <div class="game-center">
+                    <div class="game-info">
+                        <div class="info-item my-score">내 점수: <span id="myScore">0</span></div>
+                        <div class="info-item timer">⏰ <span id="timer">3:00</span></div>
+                    </div>
+
+                    <div class="grid-wrapper">
+                        <div class="grid-container" id="grid"></div>
+                    </div>
+                </div>
+
+                <!-- 오른쪽 사이드바 -->
+                <div class="sidebar right" id="rightSidebar"></div>
+            </div>
+
+            <div class="game-bottom">
+                <div class="bottom-info">
+                    <div class="room-code-display">방 코드: <span id="gameRoomCode">0000</span></div>
+                    <div class="player-count">플레이어: <span id="playerCount">0/0</span></div>
+                </div>
+                <button class="btn btn-danger" onclick="leaveGame()">나가기</button>
+            </div>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const nameScreen = document.getElementById('nameScreen');
-        const playerNameInput = document.getElementById('playerNameInput');
-        const playButton = document.getElementById('playButton');
-        const joystickContainer = document.getElementById('joystick-container');
-        const joystick = document.getElementById('joystick');
-
-        let currentPlayer = null;
-        let allPlayers = {};
-        let allFood = [];
-        let allCpuPlayers = []; // Added for CPU players
-
-        const MAP_SIZE = 2000; // Should match server's MAP_SIZE
-
-        // Resize canvas to fit window
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas(); // Initial resize
-
-        // Player Join/Respawn Logic
-        playButton.addEventListener('click', () => {
-            const playerName = playerNameInput.value.trim();
-            if (playerName) {
-                socket.emit('playerJoin', playerName);
-                nameScreen.style.display = 'none';
-            }
-        });
-
-        socket.on('gameState', (gameState) => {
-            allPlayers = {};
-            gameState.players.forEach(p => {
-                allPlayers[p.id] = p;
-                if (p.id === socket.id) {
-                    currentPlayer = p;
-                }
-            });
-            allFood = gameState.food;
-            allCpuPlayers = gameState.cpuPlayers; // Receive CPU players
-        });
-
-        socket.on('playerDied', () => {
-            currentPlayer = null;
-            nameScreen.style.display = 'flex';
-            playerNameInput.value = ''; // Clear input for new name
-            alert('You died! Enter a new name to play again.');
-        });
-
-        // Mouse movement input
-        let mouseX = 0;
-        let mouseY = 0;
-        let mouseMoveTimeout;
-        let isMouseMoving = false; // New flag
-
-        canvas.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-            isMouseMoving = true; // Mouse is moving
-            clearTimeout(mouseMoveTimeout);
-            mouseMoveTimeout = setTimeout(() => {
-                isMouseMoving = false; // Mouse stopped moving
-            }, 100); // Adjust timeout as needed
-        });
-
-        // Joystick variables
-        let isDragging = false;
-        let joystickCenterX = 0;
-        let joystickCenterY = 0;
-        let joystickCurrentX = 0;
-        let joystickCurrentY = 0;
-
-        // Check for mobile device
-        const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-        if (isMobile) {
-            joystickContainer.style.display = 'block';
-
-            joystickContainer.addEventListener('touchstart', (e) => {
-                isDragging = true;
-                const touch = e.touches[0];
-                joystickCenterX = joystickContainer.offsetLeft + joystickContainer.offsetWidth / 2;
-                joystickCenterY = joystickContainer.offsetTop + joystickContainer.offsetHeight / 2;
-                joystickCurrentX = touch.clientX;
-                joystickCurrentY = touch.clientY;
-                joystick.style.left = `${joystickCurrentX - joystickContainer.offsetLeft}px`;
-                joystick.style.top = `${joystickCurrentY - joystickContainer.offsetTop}px`;
-            });
-
-            joystickContainer.addEventListener('touchmove', (e) => {
-                if (isDragging) {
-                    const touch = e.touches[0];
-                    const dx = touch.clientX - joystickCenterX;
-                    const dy = touch.clientY - joystickCenterY;
-                    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), joystickContainer.offsetWidth / 2);
-                    const angle = Math.atan2(dy, dx);
-
-                    joystickCurrentX = joystickCenterX + Math.cos(angle) * distance;
-                    joystickCurrentY = joystickCenterY + Math.sin(angle) * distance;
-
-                    joystick.style.left = `${joystickCurrentX - joystickContainer.offsetLeft}px`;
-                    joystick.style.top = `${joystickCurrentY - joystickContainer.offsetTop}px`;
-
-                    // Update target for server
-                    mouseX = currentPlayer.x + (joystickCurrentX - joystickCenterX) * 5; // Scale joystick movement
-                    mouseY = currentPlayer.y + (joystickCurrentY - joystickCenterY) * 5; // Scale joystick movement
-                }
-            });
-
-            joystickContainer.addEventListener('touchend', () => {
-                isDragging = false;
-                joystick.style.left = '50%';
-                joystick.style.top = '50%';
-                mouseX = currentPlayer.x; // Stop movement
-                mouseY = currentPlayer.y; // Stop movement
-            });
-        }
-
-        function update() {
-            if (currentPlayer) {
-                let targetX, targetY;
-
-                if (isMobile) {
-                    if (isDragging) {
-                        // Joystick is active, calculate target based on joystick
-                        targetX = currentPlayer.x + (joystickCurrentX - joystickCenterX) * 5; // Scale joystick movement
-                        targetY = currentPlayer.y + (joystickCurrentY - joystickCenterY) * 5; // Scale joystick movement
-                    } else {
-                        // Joystick not active, stop movement
-                        targetX = currentPlayer.x;
-                        targetY = currentPlayer.y;
-                    }
-                } else {
-                    // Desktop (mouse input)
-                    if (isMouseMoving) { // Only move if mouse is actively moving
-                        targetX = currentPlayer.x + (mouseX - canvas.width / 2);
-                        targetY = currentPlayer.y + (mouseY - canvas.height / 2);
-                    } else {
-                        // Mouse not moving, stop movement
-                        targetX = currentPlayer.x;
-                        targetY = currentPlayer.y;
-                    }
-                }
-
-                // Send player input to server
-                socket.emit('playerInput', {
-                    targetX: targetX,
-                    targetY: targetY
-                });
-            }
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            if (!currentPlayer) {
-                return; // Don't draw if player hasn't joined or died
-            }
-
-            // Dynamic zoom based on player size
-            // Ensure player blob is about 1/10th of the screen height
-            const desiredPlayerScreenRadius = canvas.height / 20; // 1/10th of screen height (radius is half diameter)
-            let zoom = desiredPlayerScreenRadius / currentPlayer.radius;
-
-            // Calculate maximum zoom-out to ensure map always fills the screen
-            const minZoomForMapWidth = canvas.width / MAP_SIZE;
-            const minZoomForMapHeight = canvas.height / MAP_SIZE;
-            const maxZoomOut = Math.max(minZoomForMapWidth, minZoomForMapHeight); // Use max to ensure both dimensions are covered
-
-            // Apply the maximum zoom-out limit
-            zoom = Math.max(zoom, maxZoomOut);
-
-            ctx.save();
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            ctx.scale(zoom, zoom);
-            ctx.translate(-currentPlayer.x, -currentPlayer.y);
-
-            // Draw map grid
-            ctx.strokeStyle = '#444';
-            ctx.lineWidth = 1 / zoom; // Adjust line width with zoom
-            for (let x = -MAP_SIZE / 2; x <= MAP_SIZE / 2; x += 50) {
-                ctx.beginPath();
-                ctx.moveTo(x, -MAP_SIZE / 2);
-                ctx.lineTo(x, MAP_SIZE / 2);
-                ctx.stroke();
-            }
-            for (let y = -MAP_SIZE / 2; y <= MAP_SIZE / 2; y += 50) {
-                ctx.beginPath();
-                ctx.moveTo(-MAP_SIZE / 2, y);
-                ctx.lineTo(MAP_SIZE / 2, y);
-                ctx.stroke();
-            }
-
-            // Draw food circles
-            allFood.forEach(food => {
-                ctx.beginPath();
-                ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
-                ctx.fillStyle = food.color;
-                ctx.fill();
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 1 / zoom;
-                ctx.stroke();
-            });
-
-            // Draw CPU players
-            allCpuPlayers.forEach(cpu => {
-                ctx.beginPath();
-                ctx.arc(cpu.x, cpu.y, cpu.radius, 0, Math.PI * 2);
-                ctx.fillStyle = cpu.color;
-                ctx.fill();
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2 / zoom;
-                ctx.stroke();
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = `${cpu.radius * 0.4}px Arial`;
-                ctx.fillText(cpu.name, cpu.x, cpu.y);
-            });
-
-            // Draw other players
-            for (let id in allPlayers) {
-                const p = allPlayers[id];
-                // Don't draw current player again
-                if (p.id === socket.id) continue;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                ctx.fillStyle = p.color;
-                ctx.fill();
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2 / zoom;
-                ctx.stroke();
-
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = `${p.radius * 0.4}px Arial`;
-                ctx.fillText(p.name, p.x, p.y);
-            }
-
-            // Draw current player
-            ctx.beginPath();
-            ctx.arc(currentPlayer.x, currentPlayer.y, currentPlayer.radius, 0, Math.PI * 2);
-            ctx.fillStyle = currentPlayer.color;
-            ctx.fill();
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 2 / zoom;
-            ctx.stroke();
-
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = `${currentPlayer.radius * 0.5}px Arial`;
-            ctx.fillText(currentPlayer.name, currentPlayer.x, currentPlayer.y);
-
-            ctx.restore(); // Restore canvas state
-
-            // --- Draw Mini-map ---
-            const MINIMAP_WIDTH = 200;
-            const MINIMAP_HEIGHT = 200;
-            const MINIMAP_MARGIN = 20;
-
-            ctx.save();
-            ctx.translate(canvas.width - MINIMAP_WIDTH - MINIMAP_MARGIN, MINIMAP_MARGIN); // Position mini-map
-
-            // Mini-map background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
-
-            // Scale factors for mini-map
-            const scaleX = MINIMAP_WIDTH / MAP_SIZE;
-            const scaleY = MINIMAP_HEIGHT / MAP_SIZE;
-
-            // Draw food on mini-map
-            allFood.forEach(food => {
-                ctx.beginPath();
-                ctx.arc((food.x + MAP_SIZE / 2) * scaleX, (food.y + MAP_SIZE / 2) * scaleY, food.radius * scaleX, 0, Math.PI * 2);
-                ctx.fillStyle = food.color;
-                ctx.fill();
-            });
-
-            // Draw CPU players on mini-map
-            allCpuPlayers.forEach(cpu => {
-                ctx.beginPath();
-                ctx.arc((cpu.x + MAP_SIZE / 2) * scaleX, (cpu.y + MAP_SIZE / 2) * scaleY, cpu.radius * scaleX, 0, Math.PI * 2);
-                ctx.fillStyle = cpu.color;
-                ctx.fill();
-            });
-
-            // Draw other players on mini-map
-            for (let id in allPlayers) {
-                const p = allPlayers[id];
-                ctx.beginPath();
-                ctx.arc((p.x + MAP_SIZE / 2) * scaleX, (p.y + MAP_SIZE / 2) * scaleY, p.radius * scaleX, 0, Math.PI * 2);
-                ctx.fillStyle = p.color;
-                ctx.fill();
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 0.5;
-                ctx.stroke();
-            }
-
-            ctx.restore(); // Restore canvas state after drawing mini-map
-        }
-
-        // Game loop
-        function gameLoop() {
-            update();
-            draw();
-            requestAnimationFrame(gameLoop);
-        }
-
-        gameLoop(); // Start the game
-    </script>
+    <script src="game.js"></script>
 </body>
 </html>

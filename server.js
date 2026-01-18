@@ -1,263 +1,222 @@
 const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
-
-const PORT = process.env.PORT || 3000;
-
-app.use(express.static('public'));
-
-let players = {};
-let food = [];
-let cpuPlayers = {}; // Added for CPU players
-const FOOD_COUNT = 100;
-const CPU_PLAYER_COUNT = 10; // Number of CPU players
-const INITIAL_CPU_RADIUS = 25;
-const CPU_SPEED = 3;
-const MAP_SIZE = 2000; // Example map size
-
-// Generate initial food
-function generateFood() {
-    for (let i = 0; i < FOOD_COUNT; i++) {
-        food.push({
-            x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-            y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-            radius: 10,
-            color: `hsl(${Math.random() * 360}, 100%, 50%)`
-        });
+const http = require('http').createServer(app);
+const io = require('socket.io')(http, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
     }
+});
+const path = require('path');
+
+// 정적 파일 제공
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 게임 방 관리
+const rooms = new Map();
+
+// 랜덤 방 코드 생성
+function generateRoomCode() {
+    let code;
+    do {
+        code = Math.floor(1000 + Math.random() * 9000).toString();
+    } while (rooms.has(code));
+    return code;
 }
 
-function generateCpuPlayers() {
-    for (let i = 0; i < CPU_PLAYER_COUNT; i++) {
-        const id = `cpu-${i}`;
-        cpuPlayers[id] = {
-            id: id,
-            name: `CPU-${i}`,
-            x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-            y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-            radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-            color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-            speed: CPU_SPEED,
-            vx: (Math.random() - 0.5) * CPU_SPEED,
-            vy: (Math.random() - 0.5) * CPU_SPEED
-        };
+// 초기 그리드 생성 (15x10 = 150칸)
+function generateGrid() {
+    const grid = [];
+    for (let i = 0; i < 150; i++) {
+        grid.push(Math.floor(Math.random() * 9) + 1);
     }
+    return grid;
 }
 
-generateFood();
-generateCpuPlayers();
-
+// Socket.IO 연결
 io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
+    console.log(`[연결] ${socket.id}`);
 
-    // Initialize new player
-    socket.on('playerJoin', (playerName) => {
-        players[socket.id] = {
-            id: socket.id,
-            name: playerName,
-            x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-            y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-            radius: 30,
-            color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-            speed: 5, // Base speed
-            targetX: 0,
-            targetY: 0
+    // 방 만들기
+    socket.on('createRoom', ({ name, maxPlayers }) => {
+        const roomCode = generateRoomCode();
+        
+        const room = {
+            code: roomCode,
+            maxPlayers: maxPlayers,
+            players: [{
+                id: socket.id,
+                name: name,
+                score: 0,
+                isHost: true
+            }],
+            grid: generateGrid(),
+            isPlaying: false,
+            startTime: null
         };
-        console.log(`Player ${playerName} (${socket.id}) joined.`);
+        
+        rooms.set(roomCode, room);
+        socket.join(roomCode);
+        
+        socket.emit('roomCreated', { roomCode, maxPlayers });
+        io.to(roomCode).emit('playersUpdate', room.players);
+        
+        console.log(`[방 생성] ${roomCode} (${name}, 최대 ${maxPlayers}명)`);
     });
 
-    // Handle player movement input
-    socket.on('playerInput', (input) => {
-        if (players[socket.id]) {
-            players[socket.id].targetX = input.targetX;
-            players[socket.id].targetY = input.targetY;
+    // 방 참가
+    socket.on('joinRoom', ({ name, roomCode }) => {
+        const room = rooms.get(roomCode);
+        
+        if (!room) {
+            socket.emit('roomNotFound');
+            return;
         }
+        
+        if (room.players.length >= room.maxPlayers) {
+            socket.emit('roomFull');
+            return;
+        }
+        
+        room.players.push({
+            id: socket.id,
+            name: name,
+            score: 0,
+            isHost: false
+        });
+        
+        socket.join(roomCode);
+        socket.emit('roomJoined', { roomCode, maxPlayers: room.maxPlayers });
+        io.to(roomCode).emit('playersUpdate', room.players);
+        
+        console.log(`[방 참가] ${roomCode}: ${name}`);
     });
 
+    // 게임 시작
+    socket.on('startGame', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room) return;
+        
+        // 방장 확인
+        const player = room.players.find(p => p.id === socket.id);
+        if (!player || !player.isHost) return;
+        
+        room.isPlaying = true;
+        room.startTime = Date.now();
+        
+        io.to(roomCode).emit('gameStarted', {
+            grid: room.grid,
+            players: room.players
+        });
+        
+        console.log(`[게임 시작] ${roomCode}`);
+        
+        // 3분 타이머
+        setTimeout(() => {
+            endGame(roomCode);
+        }, 180000);
+    });
+
+    // 그리드 업데이트
+    socket.on('gridUpdate', ({ roomCode, grid, score }) => {
+        const room = rooms.get(roomCode);
+        if (!room) return;
+        
+        room.grid = grid;
+        
+        const player = room.players.find(p => p.id === socket.id);
+        if (player) {
+            player.score = score;
+        }
+        
+        // 모든 플레이어에게 업데이트 전송
+        io.to(roomCode).emit('gridUpdate', {
+            grid: grid,
+            playerId: socket.id,
+            score: score
+        });
+    });
+
+    // 방 나가기
+    socket.on('leaveRoom', (roomCode) => {
+        leaveRoom(socket, roomCode);
+    });
+
+    // 연결 해제
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
-        delete players[socket.id];
+        console.log(`[연결 해제] ${socket.id}`);
+        
+        // 모든 방에서 플레이어 제거
+        rooms.forEach((room, code) => {
+            leaveRoom(socket, code);
+        });
     });
 });
 
-// Game loop
-setInterval(() => {
-    // Update player positions
-    for (let id in players) {
-        let player = players[id];
-        const dx = player.targetX - player.x;
-        const dy = player.targetY - player.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > 5) { // Prevent jittering when very close to target
-            const angle = Math.atan2(dy, dx);
-            // Speed is 2/3 of original speed
-            const currentSpeed = (player.speed * (2/3)) / (player.radius / 30); // Slower for larger players
-            player.x += Math.cos(angle) * Math.min(distance, currentSpeed);
-            player.y += Math.sin(angle) * Math.min(distance, currentSpeed);
-        } else {
-            player.x = player.targetX;
-            player.y = player.targetY;
+// 방 나가기 처리
+function leaveRoom(socket, roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    
+    const player = room.players[playerIndex];
+    room.players.splice(playerIndex, 1);
+    
+    socket.leave(roomCode);
+    
+    console.log(`[방 나가기] ${roomCode}: ${player.name}`);
+    
+    if (room.players.length === 0) {
+        // 방이 비면 삭제
+        rooms.delete(roomCode);
+        console.log(`[방 삭제] ${roomCode}`);
+    } else {
+        // 방장이 나갔으면 다음 사람을 방장으로
+        if (player.isHost && room.players.length > 0) {
+            room.players[0].isHost = true;
         }
-
-        // Keep player within map bounds
-        player.x = Math.max(-MAP_SIZE / 2 + player.radius, Math.min(MAP_SIZE / 2 - player.radius, player.x));
-        player.y = Math.max(-MAP_SIZE / 2 + player.radius, Math.min(MAP_SIZE / 2 - player.radius, player.y));
-
-        // Handle food consumption
-        for (let i = food.length - 1; i >= 0; i--) {
-            const foodItem = food[i];
-            const dist = Math.sqrt(Math.pow(player.x - foodItem.x, 2) + Math.pow(player.y - foodItem.y, 2));
-            if (dist < player.radius + foodItem.radius) {
-                player.radius += 1; // Increase player size
-                food.splice(i, 1); // Remove eaten food
-                // Generate new food
-                food.push({
-                    x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                    y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                    radius: 10,
-                    color: `hsl(${Math.random() * 360}, 100%, 50%)`
-                });
-            }
-        }
-
-        // Handle player collision (simple example: larger eats smaller)
-        for (let otherId in players) {
-            if (id === otherId) continue; // Don't check self
-
-            let otherPlayer = players[otherId];
-            const dist = Math.sqrt(Math.pow(player.x - otherPlayer.x, 2) + Math.pow(player.y - otherPlayer.y, 2));
-
-            if (dist < player.radius + otherPlayer.radius) {
-                if (player.radius > otherPlayer.radius * 1.1) { // Player is significantly larger
-                    player.radius += otherPlayer.radius / 2; // Absorb other player
-                    io.to(otherId).emit('playerDied'); // Notify eaten player
-                    delete players[otherId]; // Remove eaten player
-                } else if (otherPlayer.radius > player.radius * 1.1) { // Other player is significantly larger
-                    otherPlayer.radius += player.radius / 2; // Absorb current player
-                    io.to(id).emit('playerDied'); // Notify current player
-                    delete players[id]; // Remove current player
-                }
-            }
+        
+        io.to(roomCode).emit('playersUpdate', room.players);
+        
+        // 게임 중이었다면 종료
+        if (room.isPlaying) {
+            endGame(roomCode);
         }
     }
+}
 
-    // Update CPU player positions and handle collisions
-    for (let id in cpuPlayers) {
-        let cpu = cpuPlayers[id];
+// 게임 종료
+function endGame(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    room.isPlaying = false;
+    
+    // 점수 순으로 정렬
+    const scores = room.players
+        .map(p => ({ name: p.name, score: p.score }))
+        .sort((a, b) => b.score - a.score);
+    
+    const winner = scores[0];
+    
+    io.to(roomCode).emit('gameEnded', { winner, scores });
+    
+    console.log(`[게임 종료] ${roomCode}, 승자: ${winner.name} (${winner.score}점)`);
+}
 
-        // Simple random movement for CPU players
-        cpu.x += cpu.vx;
-        cpu.y += cpu.vy;
-
-        // Bounce off walls
-        if (cpu.x - cpu.radius < -MAP_SIZE / 2 || cpu.x + cpu.radius > MAP_SIZE / 2) {
-            cpu.vx *= -1;
-        }
-        if (cpu.y - cpu.radius < -MAP_SIZE / 2 || cpu.y + cpu.radius > MAP_SIZE / 2) {
-            cpu.vy *= -1;
-        }
-
-        // Keep CPU within map bounds
-        cpu.x = Math.max(-MAP_SIZE / 2 + cpu.radius, Math.min(MAP_SIZE / 2 - cpu.radius, cpu.x));
-        cpu.y = Math.max(-MAP_SIZE / 2 + cpu.radius, Math.min(MAP_SIZE / 2 - cpu.radius, cpu.y));
-
-        // CPU vs Food
-        for (let i = food.length - 1; i >= 0; i--) {
-            const foodItem = food[i];
-            const dist = Math.sqrt(Math.pow(cpu.x - foodItem.x, 2) + Math.pow(cpu.y - foodItem.y, 2));
-            if (dist < cpu.radius + foodItem.radius) {
-                cpu.radius += 1;
-                food.splice(i, 1);
-                food.push({
-                    x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                    y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                    radius: 10,
-                    color: `hsl(${Math.random() * 360}, 100%, 50%)`
-                });
-            }
-        }
-
-        // CPU vs Players
-        for (let playerId in players) {
-            let player = players[playerId];
-            const dist = Math.sqrt(Math.pow(cpu.x - player.x, 2) + Math.pow(cpu.y - player.y, 2));
-            if (dist < cpu.radius + player.radius) {
-                if (cpu.radius > player.radius * 1.1) {
-                    cpu.radius += player.radius / 2;
-                    io.to(playerId).emit('playerDied');
-                    delete players[playerId];
-                } else if (player.radius > cpu.radius * 1.1) {
-                    player.radius += cpu.radius / 2;
-                    delete cpuPlayers[id];
-                    // Regenerate CPU
-                    const newCpuId = `cpu-${Object.keys(cpuPlayers).length}`;
-                    cpuPlayers[newCpuId] = {
-                        id: newCpuId,
-                        name: `CPU-${Object.keys(cpuPlayers).length}`,
-                        x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                        y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                        radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-                        color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-                        speed: CPU_SPEED,
-                        vx: (Math.random() - 0.5) * CPU_SPEED,
-                        vy: (Math.random() - 0.5) * CPU_SPEED
-                    };
-                }
-            }
-        }
-
-        // CPU vs CPU
-        for (let otherCpuId in cpuPlayers) {
-            if (id === otherCpuId) continue;
-            let otherCpu = cpuPlayers[otherCpuId];
-            const dist = Math.sqrt(Math.pow(cpu.x - otherCpu.x, 2) + Math.pow(cpu.y - otherCpu.y, 2));
-            if (dist < cpu.radius + otherCpu.radius) {
-                if (cpu.radius > otherCpu.radius * 1.1) {
-                    cpu.radius += otherCpu.radius / 2;
-                    delete cpuPlayers[otherCpuId];
-                    // Regenerate CPU
-                    const newCpuId = `cpu-${Object.keys(cpuPlayers).length}`;
-                    cpuPlayers[newCpuId] = {
-                        id: newCpuId,
-                        name: `CPU-${Object.keys(cpuPlayers).length}`,
-                        x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                        y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                        radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-                        color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-                        speed: CPU_SPEED,
-                        vx: (Math.random() - 0.5) * CPU_SPEED,
-                        vy: (Math.random() - 0.5) * CPU_SPEED
-                    };
-                } else if (otherCpu.radius > cpu.radius * 1.1) {
-                    otherCpu.radius += cpu.radius / 2;
-                    delete cpuPlayers[id];
-                    // Regenerate CPU
-                    const newCpuId = `cpu-${Object.keys(cpuPlayers).length}`;
-                    cpuPlayers[newCpuId] = {
-                        id: newCpuId,
-                        name: `CPU-${Object.keys(cpuPlayers).length}`,
-                        x: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                        y: Math.random() * MAP_SIZE - MAP_SIZE / 2,
-                        radius: INITIAL_CPU_RADIUS + Math.random() * 10,
-                        color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-                        speed: CPU_SPEED,
-                        vx: (Math.random() - 0.5) * CPU_SPEED,
-                        vy: (Math.random() - 0.5) * CPU_SPEED
-                    };
-                }
-            }
-        }
-    }
-
-    // Emit game state to all connected clients
-    io.emit('gameState', { players: Object.values(players), food, cpuPlayers: Object.values(cpuPlayers) });
-}, 1000 / 60); // 60 updates per second
-
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// 서버 시작
+const PORT = process.env.PORT || 3000;
+http.listen(PORT, () => {
+    console.log('═══════════════════════════════════════');
+    console.log('🍎 멀티 사과 게임 서버 시작!');
+    console.log('═══════════════════════════════════════');
+    console.log(`포트: ${PORT}`);
+    console.log(`URL: http://localhost:${PORT}`);
+    console.log('═══════════════════════════════════════');
 });
