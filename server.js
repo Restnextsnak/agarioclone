@@ -26,41 +26,38 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
         grid.push(Math.floor(Math.random() * 9) + 1);
     }
     
-    // 2. [필수 요청 1] 쉬운 조합 강제 생성 (9, 1 배치)
-    // 인덱스 충돌 방지를 위한 헬퍼 함수
+    // 2. 쉬운 조합 강제 생성 (9, 1 배치)
     const usedIndices = new Set();
     
     function getSafePairIndex() {
-        // 15열 그리드이므로, 행이 바뀌지 않는 위치(오른쪽 끝 제외)를 찾아야 함
-        // 0~148 중, i % 15 !== 14 인 곳
         let idx;
         let attempts = 0;
         do {
             idx = Math.floor(Math.random() * 149);
             attempts++;
-            if (attempts > 1000) break; // 무한루프 방지
+            if (attempts > 1000) break; 
         } while (
-            idx % 15 === 14 || // 오른쪽 끝이면 옆이랑 짝 못지음
-            usedIndices.has(idx) || usedIndices.has(idx+1) // 이미 쓴 자리
+            idx % 15 === 14 || 
+            usedIndices.has(idx) || usedIndices.has(idx+1) 
         );
         usedIndices.add(idx);
         usedIndices.add(idx+1);
         return idx;
     }
 
-    // (1) 쉬운 황금 사과 배치 (9, 1)
+    // 쉬운 황금 사과 (9, 1)
     const goldIdx = getSafePairIndex();
     grid[goldIdx] = 9;
     grid[goldIdx+1] = 1; 
-    golds.push(goldIdx); // 9번 자리를 황금사과로 (혹은 1번 자리여도 됨, 여기선 왼쪽)
+    golds.push(goldIdx); 
 
-    // (2) 쉬운 독 사과 배치 (9, 1)
+    // 쉬운 독 사과 (9, 1)
     const specialIdx = getSafePairIndex();
     grid[specialIdx] = 9;
     grid[specialIdx+1] = 1;
-    specials.push(specialIdx); // 9번 자리를 독사과로
+    specials.push(specialIdx); 
 
-    // 3. 나머지 황금 사과 채우기 (방장 설정 개수만큼)
+    // 나머지 채우기
     while(golds.length < targetGoldCount) {
         const r = Math.floor(Math.random() * 150);
         if(!golds.includes(r) && !specials.includes(r)) {
@@ -68,7 +65,6 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
         }
     }
 
-    // 4. 나머지 독 사과 채우기 (방장 설정 개수만큼)
     while(specials.length < targetSpecialCount) {
         const r = Math.floor(Math.random() * 150);
         if(!golds.includes(r) && !specials.includes(r)) {
@@ -82,7 +78,6 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
 io.on('connection', (socket) => {
     console.log(`[Connect] ${socket.id}`);
 
-    // [필수 요청 2] 방 생성 시 개수 조절 데이터 받기
     socket.on('createRoom', ({ name, maxPlayers, mode, timeLimit, goldCount, specialCount }) => {
         const roomCode = generateRoomCode();
         const room = {
@@ -90,8 +85,8 @@ io.on('connection', (socket) => {
             maxPlayers: maxPlayers,
             mode: mode,
             timeLimit: timeLimit || 180,
-            goldCount: goldCount || 3,      // 기본값 3
-            specialCount: specialCount || 10, // 기본값 10
+            goldCount: goldCount || 3,      
+            specialCount: specialCount || 10, 
             players: [],
             isPlaying: false,
             timerInterval: null
@@ -108,6 +103,22 @@ io.on('connection', (socket) => {
         joinRoomLogic(socket, room, name, false);
     });
 
+    // [추가] 판 새로고침 요청 처리 (교착 상태 해결)
+    socket.on('requestGridRegen', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room) return;
+        
+        // 현재 방의 설정대로 새 그리드 생성
+        const data = generateGridData(room.goldCount, room.specialCount);
+        
+        // 요청한 플레이어에게만 새 판 전송
+        socket.emit('gridRegenerated', {
+            grid: data.grid,
+            specials: data.specials,
+            golds: data.golds
+        });
+    });
+
     socket.on('startGame', (roomCode) => {
         const room = rooms.get(roomCode);
         if(!room || room.players[0].id !== socket.id) return;
@@ -116,7 +127,6 @@ io.on('connection', (socket) => {
         let time = room.timeLimit;
         
         room.players.forEach(p => {
-            // 설정된 개수만큼 생성
             const data = generateGridData(room.goldCount, room.specialCount);
             p.score = 0;
             p.isDead = false;

@@ -31,7 +31,7 @@ let gameState = {
     skillCount: 0,
     isUsingSkill: false,
     hintTimer: null,
-    cursorTimer: null // [추가] 마우스 투명화 타이머 관리용
+    cursorTimer: null 
 };
 
 const audio = {
@@ -132,26 +132,22 @@ function leaveGame() {
     if(confirm("정말 나가시겠습니까?")) {
         socket.emit('leaveRoom', gameState.roomCode); 
         gameState.isPlaying = false; 
-        resetGameEffects(); // [수정] 게임 효과 초기화
+        resetGameEffects(); 
         showMenu(); 
     }
 }
 function startGame() { socket.emit('startGame', gameState.roomCode); }
 
-/* --- 게임 효과 초기화 (힌트, 커서 등) --- */
 function resetGameEffects() {
-    // 힌트 타이머 해제
     if(gameState.hintTimer) {
         clearTimeout(gameState.hintTimer);
         gameState.hintTimer = null;
     }
-    // 마우스 투명화 해제
     if(gameState.cursorTimer) {
         clearTimeout(gameState.cursorTimer);
         gameState.cursorTimer = null;
     }
     document.body.classList.remove('invisible-cursor');
-    // 힌트 표시 제거
     hideHint();
 }
 
@@ -186,6 +182,19 @@ function setupSocketEvents() {
         initGameUI();
     });
 
+    // [추가] 판 새로고침 (교착 상태 해결)
+    socket.on('gridRegenerated', ({ grid, specials, golds }) => {
+        showStatusMessage("판이 교체되었습니다! 🔄");
+        gameState.grid = grid;
+        gameState.specials = specials;
+        gameState.golds = golds;
+        gameState.stones = []; // 새 판이므로 돌 초기화
+        
+        renderMyGrid();
+        broadcastMyState();
+        resetHintTimer(); // 힌트 타이머도 리셋
+    });
+
     socket.on('monitorUpdate', ({ playerId, grid, specials, golds, stones, score }) => {
         const pIndex = gameState.players.findIndex(p => p.id === playerId);
         if(pIndex !== -1) {
@@ -210,7 +219,7 @@ function setupSocketEvents() {
     socket.on('playerEliminated', (playerId) => {
         if(playerId === gameState.myId) {
             gameState.isPlaying = false;
-            resetGameEffects(); // [수정] 탈락 시 효과 초기화
+            resetGameEffects(); 
             showStatusMessage("탈락했습니다...💀");
             document.querySelector('.grid-wrapper').style.opacity = '0.5';
             document.querySelectorAll('.apple').forEach(el => el.style.pointerEvents = 'none');
@@ -228,7 +237,7 @@ function setupSocketEvents() {
 
     socket.on('gameEnded', ({ winner, scores }) => {
         gameState.isPlaying = false;
-        resetGameEffects(); // [수정] 게임 종료 시 효과 초기화
+        resetGameEffects(); 
         let msg = winner ? `우승: ${winner.name}!` : "게임 종료";
         msg += "\n\n[순위]\n" + scores.map((s,i) => `${i+1}. ${s.name} (${s.score}점)`).join("\n");
         alert(msg);
@@ -329,8 +338,9 @@ function getElementFromPoint(x, y) {
 function onInputStart(e) {
     if(!gameState.isPlaying) return;
     
-    hideHint();
-    resetHintTimer();
+    // [수정] 터치 시 힌트 숨기기 및 타이머 리셋 제거
+    // 사용자가 '점수를 못 먹는 상황'을 측정해야 하므로, 단순 터치로는 리셋하지 않음.
+    // hideHint()도 제거하여 사용자가 드래그하는 동안 힌트가 유지되도록 함.
 
     const point = getPointFromEvent(e);
     
@@ -409,7 +419,7 @@ function checkScore() {
     const sum = gameState.selectedCells.reduce((acc, idx) => acc + gameState.grid[idx], 0);
     
     if(sum === 10) {
-        resetHintTimer();
+        resetHintTimer(); // [유지] 점수 획득 시 타이머 리셋
         playSFX();
 
         gameState.score += gameState.selectedCells.length;
@@ -446,7 +456,51 @@ function checkScore() {
 
         renderMyGrid();
         broadcastMyState();
+        checkAndHandleDeadlock(); 
     }
+}
+
+/* --- 교착 상태 (판 깨기 불가) 확인 및 처리 --- */
+function checkAndHandleDeadlock() {
+    if (!hasValidMove()) {
+        socket.emit('requestGridRegen', gameState.roomCode);
+    }
+}
+
+/* --- 유효한 움직임이 있는지 전수 조사 --- */
+function hasValidMove() {
+    const cols = 15;
+    const rows = 10;
+    
+    for(let r1=0; r1<rows; r1++) {
+        for(let c1=0; c1<cols; c1++) {
+            for(let r2=r1; r2<rows; r2++) {
+                for(let c2=c1; c2<cols; c2++) {
+                    
+                    let sum = 0;
+                    let valid = true;
+
+                    for(let r=r1; r<=r2; r++) {
+                        for(let c=c1; c<=c2; c++) {
+                            const idx = r * cols + c;
+                            const val = gameState.grid[idx];
+                            if(val === 0 || gameState.stones.includes(idx)) {
+                                valid = false;
+                                break;
+                            }
+                            sum += val;
+                        }
+                        if(!valid) break;
+                    }
+
+                    if(valid && sum === 10) {
+                        return true; 
+                    }
+                }
+            }
+        }
+    }
+    return false; 
 }
 
 /* --- 힌트 시스템 --- */
@@ -562,6 +616,7 @@ function useSingleRemoveSkill(idx) {
 
     renderMyGrid();
     broadcastMyState();
+    checkAndHandleDeadlock(); 
 }
 
 function broadcastMyState() {
@@ -600,6 +655,7 @@ function applyAttackEffect(type) {
             if(gameState.grid[i] > 0) gameState.grid[i] = values[vIdx++];
         }
         renderMyGrid();
+        checkAndHandleDeadlock(); 
     } 
     else if(type === 2) { 
         showStatusMessage("돌 사과 발생!");
@@ -611,8 +667,8 @@ function applyAttackEffect(type) {
         
         renderMyGrid();
         broadcastMyState();
+        checkAndHandleDeadlock(); 
         
-        // 10초 후 "이번에 생긴 돌들만" 제거 (독립 시행)
         setTimeout(() => {
             if(!gameState.isPlaying) return;
             gameState.stones = gameState.stones.filter(idx => !newStones.includes(idx));
@@ -625,7 +681,6 @@ function applyAttackEffect(type) {
         showStatusMessage("마우스가 사라졌습니다!");
         document.body.classList.add('invisible-cursor');
         
-        // [수정] 타임아웃을 변수에 저장하여 초기화 가능하게 함
         gameState.cursorTimer = setTimeout(() => {
             document.body.classList.remove('invisible-cursor');
             gameState.cursorTimer = null;
