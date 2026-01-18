@@ -30,7 +30,8 @@ let gameState = {
     // 스킬 및 힌트 로직
     skillCount: 0,
     isUsingSkill: false,
-    hintTimer: null
+    hintTimer: null,
+    cursorTimer: null // [추가] 마우스 투명화 타이머 관리용
 };
 
 const audio = {
@@ -131,11 +132,28 @@ function leaveGame() {
     if(confirm("정말 나가시겠습니까?")) {
         socket.emit('leaveRoom', gameState.roomCode); 
         gameState.isPlaying = false; 
-        clearHintTimer();
+        resetGameEffects(); // [수정] 게임 효과 초기화
         showMenu(); 
     }
 }
 function startGame() { socket.emit('startGame', gameState.roomCode); }
+
+/* --- 게임 효과 초기화 (힌트, 커서 등) --- */
+function resetGameEffects() {
+    // 힌트 타이머 해제
+    if(gameState.hintTimer) {
+        clearTimeout(gameState.hintTimer);
+        gameState.hintTimer = null;
+    }
+    // 마우스 투명화 해제
+    if(gameState.cursorTimer) {
+        clearTimeout(gameState.cursorTimer);
+        gameState.cursorTimer = null;
+    }
+    document.body.classList.remove('invisible-cursor');
+    // 힌트 표시 제거
+    hideHint();
+}
 
 /* --- 소켓 이벤트 --- */
 function setupSocketEvents() {
@@ -192,7 +210,7 @@ function setupSocketEvents() {
     socket.on('playerEliminated', (playerId) => {
         if(playerId === gameState.myId) {
             gameState.isPlaying = false;
-            clearHintTimer();
+            resetGameEffects(); // [수정] 탈락 시 효과 초기화
             showStatusMessage("탈락했습니다...💀");
             document.querySelector('.grid-wrapper').style.opacity = '0.5';
             document.querySelectorAll('.apple').forEach(el => el.style.pointerEvents = 'none');
@@ -210,7 +228,7 @@ function setupSocketEvents() {
 
     socket.on('gameEnded', ({ winner, scores }) => {
         gameState.isPlaying = false;
-        clearHintTimer();
+        resetGameEffects(); // [수정] 게임 종료 시 효과 초기화
         let msg = winner ? `우승: ${winner.name}!` : "게임 종료";
         msg += "\n\n[순위]\n" + scores.map((s,i) => `${i+1}. ${s.name} (${s.score}점)`).join("\n");
         alert(msg);
@@ -316,7 +334,6 @@ function onInputStart(e) {
 
     const point = getPointFromEvent(e);
     
-    // 스킬 사용 모드
     if(gameState.isUsingSkill) {
         const target = e.target.closest('.apple');
         if(target && !target.classList.contains('empty') && !target.classList.contains('stone')) {
@@ -417,7 +434,6 @@ function checkScore() {
         
         if(goldTriggered) {
             showStatusMessage("황금 사과 효과!✨");
-            // 50% 확률로 리필 or 스킬 획득
             if(Math.random() < 0.5) {
                 refillBoard();
                 showStatusMessage("보드 리필! 🔄");
@@ -437,7 +453,6 @@ function checkScore() {
 function resetHintTimer() {
     clearHintTimer();
     if(gameState.isPlaying) {
-        // [수정] 15초 -> 10초
         gameState.hintTimer = setTimeout(findAndShowHint, 10000); 
     }
 }
@@ -591,12 +606,16 @@ function applyAttackEffect(type) {
         const candidates = gameState.grid.map((v, i) => v > 0 ? i : -1).filter(i => i !== -1);
         candidates.sort(() => Math.random() - 0.5);
         
-        // [수정] 10개 -> 20개
-        gameState.stones = candidates.slice(0, 20);
-        renderMyGrid();
+        const newStones = candidates.slice(0, 20);
+        gameState.stones.push(...newStones);
         
+        renderMyGrid();
+        broadcastMyState();
+        
+        // 10초 후 "이번에 생긴 돌들만" 제거 (독립 시행)
         setTimeout(() => {
-            gameState.stones = []; 
+            if(!gameState.isPlaying) return;
+            gameState.stones = gameState.stones.filter(idx => !newStones.includes(idx));
             renderMyGrid();
             broadcastMyState(); 
         }, 10000);
@@ -606,9 +625,10 @@ function applyAttackEffect(type) {
         showStatusMessage("마우스가 사라졌습니다!");
         document.body.classList.add('invisible-cursor');
         
-        // [수정] 30초 -> 20초
-        setTimeout(() => {
+        // [수정] 타임아웃을 변수에 저장하여 초기화 가능하게 함
+        gameState.cursorTimer = setTimeout(() => {
             document.body.classList.remove('invisible-cursor');
+            gameState.cursorTimer = null;
         }, 20000);
     }
     resetHintTimer(); 

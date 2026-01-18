@@ -79,28 +79,26 @@
             width: 100%; height: 100%; max-width: 100%; max-height: 100%;
         }
         
+        /* [수정] 배경색 흰색으로 변경 */
         .grid-container {
             display: grid; grid-template-columns: repeat(15, 1fr); gap: 2px;
-            background: #000; padding: 2px; border-radius: 5px;
+            background: #ffffff; padding: 2px; border-radius: 5px;
             width: fit-content;
         }
 
-        /* --- [수정] 사과 스프라이트 CSS --- */
         .apple {
             width: 5vmin; height: 5vmin; 
             max-width: 50px; max-height: 50px;
             
-            /* 기본 사과 이미지 */
-            background-image: url('apple.png'); /* 일반 사과 */
+            background-image: url('apple.png');
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
-            background-color: transparent; /* 배경색 제거 */
-            border: none; /* 네모난 테두리 제거 */
+            background-color: transparent; 
+            border: none; 
             
             display: flex; align-items: center; justify-content: center;
             
-            /* 숫자는 이미지 위에 잘 보이게 흰색에 그림자 추가 */
             font-size: clamp(10px, 2.5vmin, 20px);
             font-weight: 900; 
             color: white;
@@ -110,38 +108,33 @@
             transition: transform 0.1s;
         }
 
-        /* 스프라이트별 이미지 교체 */
-        .apple.special { background-image: url('poison.png'); } /* 독사과 */
-        .apple.gold { background-image: url('gold.png'); }     /* 황금 사과 */
-        .apple.stone { background-image: url('stone.png'); cursor: not-allowed; } /* 돌 사과 */
+        .apple.special { background-image: url('poison.png'); }
+        .apple.gold { background-image: url('gold.png'); }
+        .apple.stone { background-image: url('stone.png'); cursor: not-allowed; }
 
         .apple:hover { transform: scale(1.1); }
 
-        /* [핵심] 선택 시 외곽선 처리: drop-shadow 사용 */
-        /* 이미지가 투명 배경 png라면 사과 모양 그대로 선이 따집니다 */
         .apple.selecting {
             filter: drop-shadow(0 0 3px #ff0000) drop-shadow(0 0 5px #ffeb3b);
             transform: scale(1.15);
             z-index: 10;
         }
         
-        /* 힌트 효과 */
         .apple.hint {
             filter: drop-shadow(0 0 5px #00ff00) drop-shadow(0 0 10px #00ff00);
             animation: hintBlink 0.5s infinite alternate;
             z-index: 20;
         }
         
-        /* 빈칸 */
+        /* [수정] 빈칸을 흰색으로 처리하여 배경과 동일하게 만듦 */
         .apple.empty { 
             background-image: none; 
-            background-color: #ddd; 
-            opacity: 0.3; 
-            border-radius: 5px; /* 빈칸은 네모나게 */
+            background-color: #ffffff; 
+            opacity: 1; /* 투명도 제거하거나 1로 설정 */
+            border-radius: 5px; 
             cursor: default; 
         }
 
-        /* 스킬 사용 중 커서 */
         body.using-skill .apple { cursor: crosshair !important; }
         body.using-skill .apple:hover { filter: drop-shadow(0 0 5px red); }
 
@@ -176,7 +169,6 @@
         }
         .player-info { display: flex; justify-content: space-between; font-size: 12px; }
         
-        /* 미니맵은 작아서 이미지 로드 부담되니 색상 유지 (원하면 여기도 이미지 가능) */
         .player-mini-grid {
             display: grid; grid-template-columns: repeat(15, 1fr); gap: 0.5px;
             margin-top: 2px; width: 100%; background: #333; padding: 1px;
