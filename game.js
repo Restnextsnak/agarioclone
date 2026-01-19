@@ -60,6 +60,13 @@ window.onload = function() {
     document.body.addEventListener('touchstart', startAudioContext, { once: true });
 };
 
+// [수정됨] 스코프 문제를 방지하기 위해 window 객체에 명시적으로 등록
+window.kickPlayer = function(targetId) {
+    if (confirm("이 플레이어를 강퇴하시겠습니까? (이 방에 재입장 불가)")) {
+        socket.emit('kickPlayer', targetId);
+    }
+};
+
 function setupAudio() {
     audio.bgmTitle = document.getElementById('bgmTitle');
     audio.bgmGame = document.getElementById('bgmGame');
@@ -158,7 +165,8 @@ function updateModeDescription() {
     }
 }
 
-function toggleTimeSelect() {
+// 스코프 문제 방지를 위해 window 객체에 등록 (game.js는 보통 글로벌이지만 안전을 위해)
+window.toggleTimeSelect = function() {
     updateModeDescription();
 }
 
@@ -199,11 +207,7 @@ function leaveGame() {
 }
 function startGame() { socket.emit('startGame', gameState.roomCode); }
 
-function kickPlayer(targetId) {
-    if (confirm("이 플레이어를 강퇴하시겠습니까? (이 방에 재입장 불가)")) {
-        socket.emit('kickPlayer', targetId);
-    }
-}
+// window.kickPlayer로 이동됨 (상단 참조)
 
 function resetGameEffects() {
     if(gameState.hintTimer) {

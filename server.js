@@ -109,10 +109,12 @@ io.on('connection', (socket) => {
         joinRoomLogic(socket, room, name, false);
     });
 
+    // [수정됨] 강퇴 로직 개선 - 독립적인 처리로 안정성 확보
     socket.on('kickPlayer', (targetId) => {
         let targetRoom = null;
         let requester = null;
 
+        // 1. 요청자와 방 찾기
         for (const [code, room] of rooms) {
             const p = room.players.find(p => p.id === socket.id);
             if (p) {
@@ -122,20 +124,30 @@ io.on('connection', (socket) => {
             }
         }
 
+        // 2. 권한 확인 및 대상 존재 확인
         if (targetRoom && requester && requester.isHost) {
-            const targetPlayer = targetRoom.players.find(p => p.id === targetId);
-            if (targetPlayer) {
+            const targetIndex = targetRoom.players.findIndex(p => p.id === targetId);
+            
+            if (targetIndex !== -1) {
+                const targetPlayer = targetRoom.players[targetIndex];
+
+                // 3. 밴 목록 추가
                 targetRoom.bannedNames.push(targetPlayer.name);
-                io.to(targetId).emit('kicked');
                 
+                // 4. 대상에게 강퇴 알림 전송
+                io.to(targetId).emit('kicked');
+
+                // 5. 플레이어 목록에서 제거
+                targetRoom.players.splice(targetIndex, 1);
+
+                // 6. 대상 소켓을 방에서 내보냄 (Socket.io 룸 처리)
                 const targetSocket = io.sockets.sockets.get(targetId);
                 if (targetSocket) {
-                    handleLeave(targetSocket, targetRoom.code);
-                } else {
-                    const idx = targetRoom.players.findIndex(p => p.id === targetId);
-                    if(idx !== -1) targetRoom.players.splice(idx, 1);
-                    io.to(targetRoom.code).emit('playersUpdate', targetRoom.players);
+                    targetSocket.leave(targetRoom.code);
                 }
+
+                // 7. 남은 인원에게 업데이트 전송
+                io.to(targetRoom.code).emit('playersUpdate', targetRoom.players);
             }
         }
     });
