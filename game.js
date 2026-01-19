@@ -117,7 +117,6 @@ function showMenu() {
     hideAllScreens(); 
     document.getElementById('menuScreen').classList.remove('hidden'); 
     
-    // [추가] 메뉴 볼륨 슬라이더 동기화
     const menuSlider = document.getElementById('volumeSlider');
     if(menuSlider) menuSlider.value = audio.volume;
     
@@ -134,10 +133,44 @@ function showJoinRoom() {
     playTitleBGM(); 
 }
 
+// [수정] 모드에 따른 UI 제어
 function toggleTimeSelect() {
     const mode = document.getElementById('gameMode').value;
     const timeGroup = document.getElementById('timeSelectGroup');
-    timeGroup.style.display = mode === 'timeattack' ? 'block' : 'none';
+    const timeSelect = document.getElementById('timeLimit');
+    const goldInput = document.getElementById('goldCount');
+    const specialInput = document.getElementById('specialCount');
+    
+    if (mode === 'fixedseed') {
+        // 시드 고정: 시간 2분 고정, 특수 사과 0개, 입력 비활성화
+        timeSelect.value = "120";
+        timeSelect.disabled = true;
+        
+        goldInput.value = 0;
+        goldInput.disabled = true;
+        document.getElementById('goldVal').textContent = '0';
+        
+        specialInput.value = 0;
+        specialInput.disabled = true;
+        document.getElementById('specialVal').textContent = '0';
+        
+        timeGroup.style.display = 'block'; // 시간은 보여주되 비활성화
+    } else {
+        // 다른 모드: 입력 활성화
+        timeSelect.disabled = false;
+        goldInput.disabled = false;
+        specialInput.disabled = false;
+        
+        // 값이 0이면 기본값으로 복구 (편의성)
+        if (goldInput.value == 0) { 
+            goldInput.value = 3; document.getElementById('goldVal').textContent = '3';
+        }
+        if (specialInput.value == 0) {
+            specialInput.value = 10; document.getElementById('specialVal').textContent = '10';
+        }
+        
+        timeGroup.style.display = mode === 'timeattack' ? 'block' : 'none';
+    }
 }
 
 /* --- 방 관리 --- */
@@ -291,7 +324,12 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
     hideAllScreens();
     document.getElementById('waitingRoom').classList.remove('hidden');
     document.getElementById('waitingCode').textContent = roomCode;
-    document.getElementById('waitingModeDisplay').textContent = mode === 'timeattack' ? '<타임어택 모드>' : '<데스매치 모드>';
+    // 대기실 텍스트 표시
+    let modeText = '<타임어택 모드>';
+    if (mode === 'deathmatch') modeText = '<데스매치 모드>';
+    else if (mode === 'fixedseed') modeText = '<시드 고정 (실력전)>';
+    
+    document.getElementById('waitingModeDisplay').textContent = modeText;
     document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
 }
 
@@ -308,7 +346,6 @@ function updateWaitingRoom(players) {
 function initGameUI() {
     playGameBGM(); 
 
-    // [추가] 게임 화면 슬라이더 동기화
     const gameSlider = document.getElementById('gameVolumeSlider');
     if(gameSlider) gameSlider.value = audio.volume;
 
@@ -317,7 +354,12 @@ function initGameUI() {
     document.body.classList.remove('invisible-cursor');
     document.querySelector('.grid-wrapper').style.opacity = '1';
     
-    document.getElementById('gameModeBadge').textContent = gameState.mode === 'timeattack' ? 'TIME ATTACK' : 'DEATH MATCH';
+    // 모드 뱃지 텍스트
+    let badgeText = 'TIME ATTACK';
+    if(gameState.mode === 'deathmatch') badgeText = 'DEATH MATCH';
+    else if(gameState.mode === 'fixedseed') badgeText = 'FIXED SEED';
+    
+    document.getElementById('gameModeBadge').textContent = badgeText;
     document.getElementById('gameRoomCode').textContent = gameState.roomCode;
     document.getElementById('myScore').textContent = '0';
     updateSkillButton();

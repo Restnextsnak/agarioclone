@@ -26,36 +26,38 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
         grid.push(Math.floor(Math.random() * 9) + 1);
     }
     
-    // 2. 쉬운 조합 강제 생성 (9, 1 배치)
-    const usedIndices = new Set();
-    
-    function getSafePairIndex() {
-        let idx;
-        let attempts = 0;
-        do {
-            idx = Math.floor(Math.random() * 149);
-            attempts++;
-            if (attempts > 1000) break; 
-        } while (
-            idx % 15 === 14 || 
-            usedIndices.has(idx) || usedIndices.has(idx+1) 
-        );
-        usedIndices.add(idx);
-        usedIndices.add(idx+1);
-        return idx;
+    // 쉬운 조합 생성 (특수 사과 개수가 0개여도 생성 여부는 설정에 따라야 함)
+    // 시드 고정 모드 등 특수 사과가 0개면 생성하지 않음.
+    if (targetGoldCount > 0 && targetSpecialCount > 0) {
+        const usedIndices = new Set();
+        function getSafePairIndex() {
+            let idx;
+            let attempts = 0;
+            do {
+                idx = Math.floor(Math.random() * 149);
+                attempts++;
+                if (attempts > 1000) break; 
+            } while (
+                idx % 15 === 14 || 
+                usedIndices.has(idx) || usedIndices.has(idx+1) 
+            );
+            usedIndices.add(idx);
+            usedIndices.add(idx+1);
+            return idx;
+        }
+
+        // 쉬운 황금 사과 (9, 1)
+        const goldIdx = getSafePairIndex();
+        grid[goldIdx] = 9;
+        grid[goldIdx+1] = 1; 
+        golds.push(goldIdx); 
+
+        // 쉬운 독 사과 (9, 1)
+        const specialIdx = getSafePairIndex();
+        grid[specialIdx] = 9;
+        grid[specialIdx+1] = 1;
+        specials.push(specialIdx); 
     }
-
-    // 쉬운 황금 사과 (9, 1)
-    const goldIdx = getSafePairIndex();
-    grid[goldIdx] = 9;
-    grid[goldIdx+1] = 1; 
-    golds.push(goldIdx); 
-
-    // 쉬운 독 사과 (9, 1)
-    const specialIdx = getSafePairIndex();
-    grid[specialIdx] = 9;
-    grid[specialIdx+1] = 1;
-    specials.push(specialIdx); 
 
     // 나머지 채우기
     while(golds.length < targetGoldCount) {
@@ -85,8 +87,8 @@ io.on('connection', (socket) => {
             maxPlayers: maxPlayers,
             mode: mode,
             timeLimit: timeLimit || 180,
-            goldCount: goldCount || 3,      
-            specialCount: specialCount || 10, 
+            goldCount: goldCount,      
+            specialCount: specialCount, 
             players: [],
             isPlaying: false,
             timerInterval: null
@@ -103,15 +105,15 @@ io.on('connection', (socket) => {
         joinRoomLogic(socket, room, name, false);
     });
 
-    // [추가] 판 새로고침 요청 처리 (교착 상태 해결)
+    // 판 새로고침 요청 처리
     socket.on('requestGridRegen', (roomCode) => {
         const room = rooms.get(roomCode);
         if (!room) return;
         
-        // 현재 방의 설정대로 새 그리드 생성
+        // 현재 방의 설정대로 새 그리드 생성 (시드 고정 모드면 사용 안함 or 동일하게? 실력전이니 개별 리젠은 이상할 수 있으나 룰상 교착상태면 해야 함)
+        // 시드 고정이라도 더이상 깰 게 없으면 새 판을 줘야 하므로 로직 유지.
         const data = generateGridData(room.goldCount, room.specialCount);
         
-        // 요청한 플레이어에게만 새 판 전송
         socket.emit('gridRegenerated', {
             grid: data.grid,
             specials: data.specials,
@@ -124,10 +126,23 @@ io.on('connection', (socket) => {
         if(!room || room.players[0].id !== socket.id) return;
         
         room.isPlaying = true;
+        
+        // [시드 고정 모드 처리]
+        let commonData = null;
+        if (room.mode === 'fixedseed') {
+            room.timeLimit = 120; // 2분 고정
+            room.goldCount = 0;   // 특수 사과 없음
+            room.specialCount = 0;
+            // 공통 그리드 생성
+            commonData = generateGridData(0, 0);
+        }
+
         let time = room.timeLimit;
         
         room.players.forEach(p => {
-            const data = generateGridData(room.goldCount, room.specialCount);
+            // 시드 고정이면 공통 데이터 사용, 아니면 개별 생성
+            const data = (room.mode === 'fixedseed') ? commonData : generateGridData(room.goldCount, room.specialCount);
+            
             p.score = 0;
             p.isDead = false;
             io.to(p.id).emit('gameStarted', { 
