@@ -14,12 +14,14 @@ let gameState = {
     golds: [], 
     stones: [], 
     score: 0,
+    isDead: false,
     
     // 게임 상태
     time: 180,
     isPlaying: false,
     players: [],
     targetId: null, 
+    spectatingTargetId: null,
     
     // 드래그 로직
     isSelecting: false,
@@ -34,7 +36,13 @@ let gameState = {
     cursorTimer: null 
 };
 
-// 오디오 객체
+// 모드 설명 데이터 추가
+const MODE_DESCRIPTIONS = {
+    'timeattack': "제한 시간 동안 가장 많은 점수를 얻는 사람이 승리합니다. (기본 모드)",
+    'deathmatch': "타이머 없음. 30초마다 점수가 낮은 생존자의 절반이 탈락합니다. 동점 시 늦게 점수를 얻은 사람이 탈락하며, 최후의 1인이 승리합니다.",
+    'fixedseed': "모두가 똑같은 맵으로 대결합니다. 독/황금 사과가 없고 제한시간 2분인 순수 실력전입니다."
+};
+
 const audio = {
     bgmTitle: null,
     bgmGame: null,
@@ -126,6 +134,7 @@ function showCreateRoom() {
     hideAllScreens(); 
     document.getElementById('createRoomScreen').classList.remove('hidden'); 
     playTitleBGM(); 
+    updateModeDescription(); // 모드 설명 초기화
 }
 function showJoinRoom() { 
     hideAllScreens(); 
@@ -133,10 +142,24 @@ function showJoinRoom() {
     playTitleBGM(); 
 }
 
-function toggleTimeSelect() {
+// 모드 설명 및 타임 셀렉트 토글
+function updateModeDescription() {
     const mode = document.getElementById('gameMode').value;
+    const descEl = document.getElementById('modeDescription');
     const timeGroup = document.getElementById('timeSelectGroup');
-    timeGroup.style.display = mode === 'timeattack' ? 'block' : 'none';
+    
+    if(descEl) descEl.textContent = MODE_DESCRIPTIONS[mode] || "";
+    
+    // 타임어택만 시간 설정 가능
+    if (mode === 'timeattack') {
+        timeGroup.style.display = 'block';
+    } else {
+        timeGroup.style.display = 'none';
+    }
+}
+
+function toggleTimeSelect() {
+    updateModeDescription();
 }
 
 /* --- 방 관리 --- */
@@ -176,7 +199,6 @@ function leaveGame() {
 }
 function startGame() { socket.emit('startGame', gameState.roomCode); }
 
-// [추가] 강퇴 요청 함수
 function kickPlayer(targetId) {
     if (confirm("이 플레이어를 강퇴하시겠습니까? (이 방에 재입장 불가)")) {
         socket.emit('kickPlayer', targetId);
@@ -205,7 +227,7 @@ function setupSocketEvents() {
     socket.on('playersUpdate', (players) => {
         gameState.players = players;
         
-        // 내 정보 갱신 (호스트 여부 등)
+        // 내 정보 갱신
         const me = players.find(p => p.id === gameState.myId);
         if(me) gameState.isHost = me.isHost;
 
@@ -216,13 +238,11 @@ function setupSocketEvents() {
         const cntEl = document.getElementById('playerCount');
         if(cntEl) cntEl.textContent = `${players.length}/${gameState.maxPlayers}`;
         
-        // 대기실 시작 버튼 표시 여부
         if(!gameState.isPlaying) {
             document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
         }
     });
 
-    // [추가] 강퇴 당했을 때 이벤트 처리
     socket.on('kicked', () => {
         alert("방장에 의해 강퇴당했습니다.");
         gameState.roomCode = null;
@@ -237,7 +257,9 @@ function setupSocketEvents() {
         gameState.golds = golds || [];
         gameState.stones = [];
         gameState.score = 0;
+        gameState.isDead = false; 
         gameState.targetId = null;
+        gameState.spectatingTargetId = null; 
         gameState.skillCount = 0; 
         gameState.isUsingSkill = false;
         
@@ -247,6 +269,8 @@ function setupSocketEvents() {
     });
 
     socket.on('gridRegenerated', ({ grid, specials, golds }) => {
+        if(gameState.isDead) return;
+
         showStatusMessage("판이 교체되었습니다! 🔄");
         gameState.grid = grid;
         gameState.specials = specials;
@@ -261,16 +285,23 @@ function setupSocketEvents() {
     socket.on('monitorUpdate', ({ playerId, grid, specials, golds, stones, score }) => {
         const pIndex = gameState.players.findIndex(p => p.id === playerId);
         if(pIndex !== -1) {
-            gameState.players[pIndex].grid = grid;
-            gameState.players[pIndex].specials = specials;
-            gameState.players[pIndex].golds = golds;
-            gameState.players[pIndex].stones = stones;
-            gameState.players[pIndex].score = score;
-            updatePlayerPanels();
+            const p = gameState.players[pIndex];
+            p.grid = grid;
+            p.specials = specials;
+            p.golds = golds;
+            p.stones = stones;
+            p.score = score;
+            
+            updateSinglePlayerPanel(p);
+
+            if (gameState.isDead && playerId === gameState.spectatingTargetId) {
+                renderSpectatorGrid(p);
+            }
         }
     });
 
     socket.on('attacked', ({ type, attackerName }) => {
+        if (gameState.isDead) return;
         showStatusMessage(`'${attackerName}'의 공격!`);
         applyAttackEffect(type);
     });
@@ -281,16 +312,27 @@ function setupSocketEvents() {
 
     socket.on('playerEliminated', (playerId) => {
         if(playerId === gameState.myId) {
-            gameState.isPlaying = false;
+            gameState.isDead = true;
+            gameState.isPlaying = true; 
+            
             resetGameEffects(); 
-            showStatusMessage("탈락했습니다...💀");
-            document.querySelector('.grid-wrapper').style.opacity = '0.5';
-            document.querySelectorAll('.apple').forEach(el => el.style.pointerEvents = 'none');
+            showStatusMessage("탈락했습니다... 관전 모드 진입 👻");
+            
+            document.querySelector('.grid-wrapper').style.opacity = '0.8';
+            document.getElementById('skillBtn').style.display = 'none';
+
+            spectateFirstSurvivor();
+        } else {
+            if (gameState.isDead && gameState.spectatingTargetId === playerId) {
+                 spectateFirstSurvivor();
+            }
         }
         
         const p = gameState.players.find(p => p.id === playerId);
-        if(p) p.isDead = true;
-        updatePlayerPanels();
+        if(p) {
+            p.isDead = true;
+            updateSinglePlayerPanel(p);
+        }
     });
 
     socket.on('timerUpdate', (time) => {
@@ -326,7 +368,6 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
 
 function updateWaitingRoom(players) {
     const div = document.getElementById('waitingPlayers');
-    // [수정] 방장일 경우 다른 플레이어 옆에 강퇴 버튼 표시
     div.innerHTML = players.map(p => {
         let kickBtn = '';
         if (gameState.isHost && p.id !== gameState.myId) {
@@ -351,29 +392,57 @@ function initGameUI() {
     document.querySelector('.grid-wrapper').style.opacity = '1';
     
     let badgeText = 'TIME ATTACK';
-    if(gameState.mode === 'deathmatch') badgeText = 'DEATH MATCH';
-    else if(gameState.mode === 'fixedseed') badgeText = 'FIXED SEED';
+    let isDeathmatch = false;
+
+    if(gameState.mode === 'deathmatch') {
+        badgeText = 'DEATH MATCH';
+        isDeathmatch = true;
+    } else if(gameState.mode === 'fixedseed') {
+        badgeText = 'FIXED SEED';
+    }
     
-    document.getElementById('gameModeBadge').textContent = badgeText;
+    const badgeEl = document.getElementById('gameModeBadge');
+    badgeEl.textContent = badgeText;
+    badgeEl.style.background = '#fff';
+    badgeEl.style.color = '#d84315';
+
     document.getElementById('gameRoomCode').textContent = gameState.roomCode;
     document.getElementById('myScore').textContent = '0';
     updateSkillButton();
     
+    // 타이머 UI 처리
+    const timerEl = document.getElementById('timer');
+    if (isDeathmatch) {
+        timerEl.parentElement.style.display = 'none'; // 데스매치는 타이머 숨김
+    } else {
+        timerEl.parentElement.style.display = 'block';
+        timerEl.textContent = "준비";
+    }
+    
+    document.getElementById('leftSidebar').innerHTML = '';
+    document.getElementById('rightSidebar').innerHTML = '';
+    createPlayerPanelsInitial(); 
+
     renderMyGrid();
-    updatePlayerPanels();
     broadcastMyState();
     resetHintTimer(); 
 }
 
 function updateTimerDisplay() {
+    if (gameState.mode === 'deathmatch') return; // 데스매치 무시
+
     const m = Math.floor(gameState.time / 60);
     const s = gameState.time % 60;
     const timerEl = document.getElementById('timer');
-    timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
-    
-    if(gameState.time <= 10) timerEl.classList.add('urgent');
-    else timerEl.classList.remove('urgent');
+    if(timerEl) {
+        timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+        
+        if(gameState.time <= 10) timerEl.classList.add('urgent');
+        else timerEl.classList.remove('urgent');
+    }
 }
+
+/* --- 메인 그리드 렌더링 --- */
 
 function renderMyGrid() {
     const container = document.getElementById('grid');
@@ -403,6 +472,43 @@ function renderMyGrid() {
     document.ontouchend = onInputEnd;
 }
 
+function renderSpectatorGrid(targetPlayer) {
+    const container = document.getElementById('grid');
+    
+    const badgeEl = document.getElementById('gameModeBadge');
+    badgeEl.textContent = `Spectating: ${targetPlayer.name}`;
+    badgeEl.style.background = '#333';
+    badgeEl.style.color = '#00ff00';
+
+    document.getElementById('myScore').textContent = targetPlayer.score;
+
+    container.innerHTML = '';
+    const pGrid = targetPlayer.grid || [];
+
+    pGrid.forEach((num, idx) => {
+        const div = document.createElement('div');
+        div.className = 'apple';
+        div.textContent = num > 0 ? num : '';
+        
+        if (num === 0) div.classList.add('empty');
+        else {
+            if(targetPlayer.stones && targetPlayer.stones.includes(idx)) div.classList.add('stone');
+            else if(targetPlayer.golds && targetPlayer.golds.includes(idx)) div.classList.add('gold');
+            else if(targetPlayer.specials && targetPlayer.specials.includes(idx)) div.classList.add('special');
+        }
+        div.style.pointerEvents = 'none';
+        container.appendChild(div);
+    });
+
+    container.onmousedown = null;
+    container.onmousemove = null;
+    document.onmouseup = null;
+    container.ontouchstart = null;
+    container.ontouchmove = null;
+    document.ontouchend = null;
+}
+
+/* --- 입력 처리 (드래그) --- */
 function getPointFromEvent(e) {
     if (e.touches && e.touches.length > 0) {
         return { x: e.touches[0].clientX, y: e.touches[0].clientY, target: e.target };
@@ -417,7 +523,7 @@ function getElementFromPoint(x, y) {
 }
 
 function onInputStart(e) {
-    if(!gameState.isPlaying) return;
+    if(!gameState.isPlaying || gameState.isDead) return; 
     
     const point = getPointFromEvent(e);
     
@@ -437,7 +543,7 @@ function onInputStart(e) {
 }
 
 function onInputMove(e) {
-    if(!gameState.isSelecting || gameState.isUsingSkill) return;
+    if(!gameState.isSelecting || gameState.isUsingSkill || gameState.isDead) return;
     
     if(e.type === 'touchmove') e.preventDefault();
 
@@ -490,6 +596,7 @@ function clearSelection() {
     gameState.selectedCells = [];
 }
 
+/* --- 게임 룰 & 점수 --- */
 function checkScore() {
     if(gameState.selectedCells.length === 0) return;
     
@@ -520,15 +627,9 @@ function checkScore() {
         });
         
         if(goldTriggered) {
-            showStatusMessage("황금 사과 효과!✨");
-            if(Math.random() < 0.5) {
-                refillBoard();
-                showStatusMessage("보드 리필! 🔄");
-            } else {
-                gameState.skillCount++;
-                updateSkillButton();
-                showStatusMessage(`스킬 획득! (+1)`);
-            }
+            gameState.skillCount++;
+            updateSkillButton();
+            showStatusMessage(`스킬 획득! (+1)`);
         }
 
         renderMyGrid();
@@ -561,18 +662,12 @@ function playLocalPoisonAnimation(gridIndex) {
     flying.className = 'flying-apple';
     flying.style.backgroundImage = "url('poison.png')";
     flying.style.backgroundSize = "contain";
-    flying.style.backgroundColor = "transparent";
-    flying.style.border = "none";
-    flying.style.boxShadow = "none"; 
-    flying.style.filter = "drop-shadow(0 0 5px #9c27b0)"; 
-
     flying.style.left = `${startRect.left}px`;
     flying.style.top = `${startRect.top}px`;
     flying.style.width = `${startRect.width}px`;
     flying.style.height = `${startRect.height}px`;
     
     document.body.appendChild(flying);
-
     flying.getBoundingClientRect();
 
     const endX = endRect.left + endRect.width/2 - startRect.width/2;
@@ -620,7 +715,7 @@ function hasValidMove() {
 
 function resetHintTimer() {
     clearHintTimer();
-    if(gameState.isPlaying) {
+    if(gameState.isPlaying && !gameState.isDead) {
         gameState.hintTimer = setTimeout(findAndShowHint, 10000); 
     }
 }
@@ -637,7 +732,7 @@ function hideHint() {
 }
 
 function findAndShowHint() {
-    if(!gameState.isPlaying) return;
+    if(!gameState.isPlaying || gameState.isDead) return;
     hideHint();
 
     const cols = 15;
@@ -676,16 +771,13 @@ function findAndShowHint() {
     }
 }
 
-function refillBoard() {
-    for(let i=0; i<gameState.grid.length; i++) {
-        if(gameState.grid[i] === 0) {
-            gameState.grid[i] = Math.floor(Math.random() * 9) + 1;
-        }
-    }
-}
-
 function updateSkillButton() {
     const btn = document.getElementById('skillBtn');
+    if(gameState.isDead) {
+        btn.style.display = 'none';
+        return;
+    }
+
     if(gameState.skillCount > 0) {
         btn.style.display = 'inline-block';
         btn.textContent = gameState.isUsingSkill ? "취소" : `✨ 지우개 (x${gameState.skillCount})`;
@@ -699,6 +791,7 @@ function updateSkillButton() {
 }
 
 function toggleSkillMode() {
+    if(gameState.isDead) return;
     gameState.isUsingSkill = !gameState.isUsingSkill;
     if(gameState.isUsingSkill) {
         document.body.classList.add('using-skill');
@@ -743,8 +836,28 @@ function broadcastMyState() {
 
 function setTarget(id) {
     if(id === gameState.myId) return;
-    gameState.targetId = id;
-    updatePlayerPanels();
+
+    if(gameState.isDead) {
+        const target = gameState.players.find(p => p.id === id);
+        if(target && !target.isDead) {
+            gameState.spectatingTargetId = id;
+            renderSpectatorGrid(target);
+            showStatusMessage(`관전 중: ${target.name}`);
+        }
+    } else {
+        gameState.targetId = id;
+        updatePlayerPanels();
+    }
+}
+
+function spectateFirstSurvivor() {
+    const survivors = gameState.players.filter(p => p.id !== gameState.myId && !p.isDead);
+    if(survivors.length > 0) {
+        gameState.spectatingTargetId = survivors[0].id;
+        renderSpectatorGrid(survivors[0]);
+    } else {
+        showStatusMessage("관전할 생존자가 없습니다.");
+    }
 }
 
 function triggerAttack() {
@@ -781,7 +894,7 @@ function applyAttackEffect(type) {
         checkAndHandleDeadlock(); 
         
         setTimeout(() => {
-            if(!gameState.isPlaying) return;
+            if(!gameState.isPlaying || gameState.isDead) return;
             gameState.stones = gameState.stones.filter(idx => !newStones.includes(idx));
             renderMyGrid();
             broadcastMyState(); 
@@ -808,55 +921,102 @@ function showStatusMessage(text) {
     setTimeout(() => el.style.display = 'none', 2000);
 }
 
-function updatePlayerPanels() {
+/* --- 패널 렌더링 최적화 --- */
+function createPlayerPanelsInitial() {
     const myId = gameState.myId;
     const others = gameState.players.filter(p => p.id !== myId);
     
     const leftSidebar = document.getElementById('leftSidebar');
     const rightSidebar = document.getElementById('rightSidebar');
-    leftSidebar.innerHTML = ''; rightSidebar.innerHTML = '';
     
     const half = Math.ceil(others.length / 2);
     
     others.forEach((p, i) => {
-        const panel = createPlayerPanel(p);
+        const panel = createPlayerPanelDOM(p);
         if(i < half) leftSidebar.appendChild(panel);
         else rightSidebar.appendChild(panel);
     });
 }
 
-function createPlayerPanel(p) {
+function updatePlayerPanels() {
+    const myId = gameState.myId;
+    const others = gameState.players.filter(p => p.id !== myId);
+    
+    const currentPanelCount = document.querySelectorAll('.player-panel').length;
+    if(currentPanelCount !== others.length) {
+        document.getElementById('leftSidebar').innerHTML = '';
+        document.getElementById('rightSidebar').innerHTML = '';
+        createPlayerPanelsInitial();
+    } else {
+        others.forEach(p => updateSinglePlayerPanel(p));
+    }
+}
+
+function createPlayerPanelDOM(p) {
     const el = document.createElement('div');
     el.className = 'player-panel';
-    if(p.id === gameState.targetId) el.classList.add('target');
-    if(p.isDead) el.classList.add('dead');
-    
-    el.onclick = () => { if(!p.isDead) setTarget(p.id); };
-    el.id = `panel-${p.id}`; 
+    el.id = `panel-${p.id}`;
+    el.onclick = () => { setTarget(p.id); };
 
-    let gridHtml = '';
-    const pGrid = p.grid || [];
-    if(pGrid.length > 0) {
-        gridHtml = '<div class="player-mini-grid">';
-        pGrid.forEach((n, i) => {
-            let cls = 'mini-apple';
-            if(n === 0) cls += ' empty';
-            else if(p.stones && p.stones.includes(i)) cls += ' stone';
-            else if(p.golds && p.golds.includes(i)) cls += ' gold';
-            else if(p.specials && p.specials.includes(i)) cls += ' special';
-            gridHtml += `<div class="${cls}"></div>`;
-        });
-        gridHtml += '</div>';
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'player-info';
+    infoDiv.innerHTML = `<span class="name"></span><span class="score"></span>`;
+    
+    const gridDiv = document.createElement('div');
+    gridDiv.className = 'player-mini-grid';
+    for(let i=0; i<150; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'mini-apple empty';
+        gridDiv.appendChild(cell);
     }
 
-    el.innerHTML = `
-        <div class="player-info">
-            <span class="player-name">${p.name}</span>
-            <span class="player-score">${p.score}점</span>
-        </div>
-        ${gridHtml}
-    `;
+    el.appendChild(infoDiv);
+    el.appendChild(gridDiv);
+    
+    updatePanelContent(el, p);
+    
     return el;
+}
+
+function updateSinglePlayerPanel(p) {
+    const el = document.getElementById(`panel-${p.id}`);
+    if(!el) return;
+    
+    updatePanelContent(el, p);
+}
+
+function updatePanelContent(el, p) {
+    if(p.isDead) el.classList.add('dead');
+    else el.classList.remove('dead');
+    
+    if(p.id === gameState.targetId) el.classList.add('target');
+    else el.classList.remove('target');
+
+    const nameEl = el.querySelector('.name');
+    const scoreEl = el.querySelector('.score');
+    if(nameEl.textContent !== p.name) nameEl.textContent = p.name;
+    if(scoreEl.textContent !== `${p.score}점`) scoreEl.textContent = `${p.score}점`;
+
+    const gridDiv = el.querySelector('.player-mini-grid');
+    const cells = gridDiv.children;
+    const pGrid = p.grid || [];
+    
+    if(pGrid.length === 0) return;
+
+    for(let i=0; i<150; i++) {
+        const cell = cells[i];
+        const val = pGrid[i];
+        let newClass = 'mini-apple';
+        
+        if(val === 0) newClass += ' empty';
+        else if(p.stones && p.stones.includes(i)) newClass += ' stone';
+        else if(p.golds && p.golds.includes(i)) newClass += ' gold';
+        else if(p.specials && p.specials.includes(i)) newClass += ' special';
+        
+        if(cell.className !== newClass) {
+            cell.className = newClass;
+        }
+    }
 }
 
 function playAttackAnimation(fromId, toId) {

@@ -41,9 +41,11 @@
             flex-shrink: 0; height: 60px;
         }
         .game-title { font-size: 20px; font-weight: bold; color: white; text-shadow: 1px 1px 0px #000; }
+        
         .mode-badge {
             background: #fff; color: #d84315; padding: 5px 10px;
             border-radius: 15px; font-weight: bold; font-size: 14px; box-shadow: 1px 1px 0 rgba(0,0,0,0.2);
+            transition: all 0.3s;
         }
 
         .game-main {
@@ -159,7 +161,6 @@
         .btn-secondary { background: #ff9800; color: white; }
         .btn-danger { background: #f44336; color: white; }
         
-        /* [추가] 강퇴 버튼 스타일 */
         .btn-kick { 
             padding: 3px 8px; border: 1px solid #d32f2f; border-radius: 4px; 
             font-size: 11px; background: #ffcdd2; color: #d32f2f; font-weight: bold;
@@ -278,7 +279,9 @@
                         <option value="deathmatch">데스매치</option>
                         <option value="fixedseed">시드 고정 (실력전)</option>
                     </select>
+                    <div id="modeDescription" style="margin-top:5px; font-size:13px; color:#666; background:#f0f0f0; padding:8px; border-radius:5px; line-height:1.4;"></div>
                 </div>
+
                 <div class="form-group" id="timeSelectGroup">
                     <label>제한 시간</label>
                     <select id="timeLimit">
