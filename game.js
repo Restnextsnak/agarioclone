@@ -34,7 +34,7 @@ let gameState = {
     cursorTimer: null 
 };
 
-// [수정] 오디오 객체 확장
+// 오디오 객체
 const audio = {
     bgmTitle: null,
     bgmGame: null,
@@ -52,7 +52,6 @@ window.onload = function() {
     document.body.addEventListener('touchstart', startAudioContext, { once: true });
 };
 
-// [수정] 오디오 초기화 및 함수 변경
 function setupAudio() {
     audio.bgmTitle = document.getElementById('bgmTitle');
     audio.bgmGame = document.getElementById('bgmGame');
@@ -63,7 +62,7 @@ function setupAudio() {
 function startAudioContext() {
     if(!audio.started) {
         audio.started = true;
-        playTitleBGM(); // 시작 시 타이틀 음악 재생
+        playTitleBGM(); 
     }
 }
 
@@ -74,7 +73,6 @@ function updateVolume(val) {
     if(audio.pop) audio.pop.volume = audio.volume;
 }
 
-// 타이틀 음악 재생 (게임 음악 정지)
 function playTitleBGM() {
     if(!audio.started) return;
     if(audio.bgmGame) {
@@ -86,7 +84,6 @@ function playTitleBGM() {
     }
 }
 
-// 게임 음악 재생 (타이틀 음악 정지)
 function playGameBGM() {
     if(!audio.started) return;
     if(audio.bgmTitle) {
@@ -99,8 +96,8 @@ function playGameBGM() {
 }
 
 function playBGM() {
-    // 호환성을 위해 남겨두거나 삭제. 
-    // 여기서는 화면 전환 함수에서 playTitleBGM/playGameBGM을 직접 호출하므로 비워둡니다.
+    if(gameState.isPlaying) playGameBGM();
+    else playTitleBGM();
 }
 
 function playSFX() {
@@ -119,7 +116,12 @@ function hideAllScreens() {
 function showMenu() { 
     hideAllScreens(); 
     document.getElementById('menuScreen').classList.remove('hidden'); 
-    playTitleBGM(); // 메뉴로 오면 타이틀 음악
+    
+    // [추가] 메뉴 볼륨 슬라이더 동기화
+    const menuSlider = document.getElementById('volumeSlider');
+    if(menuSlider) menuSlider.value = audio.volume;
+    
+    playTitleBGM(); 
 }
 function showCreateRoom() { 
     hideAllScreens(); 
@@ -277,7 +279,7 @@ function setupSocketEvents() {
         let msg = winner ? `우승: ${winner.name}!` : "게임 종료";
         msg += "\n\n[순위]\n" + scores.map((s,i) => `${i+1}. ${s.name} (${s.score}점)`).join("\n");
         alert(msg);
-        showMenu(); // 메뉴로 가면서 playTitleBGM 자동 호출됨
+        showMenu(); 
     });
 
     socket.on('error', (msg) => alert(msg));
@@ -291,7 +293,6 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
     document.getElementById('waitingCode').textContent = roomCode;
     document.getElementById('waitingModeDisplay').textContent = mode === 'timeattack' ? '<타임어택 모드>' : '<데스매치 모드>';
     document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
-    // 대기실에서는 타이틀 음악 유지
 }
 
 function updateWaitingRoom(players) {
@@ -305,7 +306,11 @@ function updateWaitingRoom(players) {
 
 /* --- 게임 로직 --- */
 function initGameUI() {
-    playGameBGM(); // [수정] 게임 시작 시 게임 음악 재생
+    playGameBGM(); 
+
+    // [추가] 게임 화면 슬라이더 동기화
+    const gameSlider = document.getElementById('gameVolumeSlider');
+    if(gameSlider) gameSlider.value = audio.volume;
 
     gameState.isPlaying = true;
     gameState.isSelecting = false;
@@ -377,8 +382,6 @@ function getElementFromPoint(x, y) {
 function onInputStart(e) {
     if(!gameState.isPlaying) return;
     
-    // 단순 터치는 힌트 초기화하지 않음
-
     const point = getPointFromEvent(e);
     
     if(gameState.isUsingSkill) {

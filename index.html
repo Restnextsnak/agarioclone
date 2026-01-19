@@ -36,7 +36,7 @@
 
         .game-header {
             background: linear-gradient(to bottom, #ff6b35 0%, #d84315 100%);
-            border-bottom: 4px solid #fff; padding: 10px 15px;
+            border-bottom: 4px solid #fff; padding: 5px 15px;
             text-align: center; display: flex; justify-content: space-between; align-items: center;
             flex-shrink: 0; height: 60px;
         }
@@ -319,6 +319,12 @@
         <div id="gameScreen" class="hidden">
             <div class="game-header">
                 <div class="game-title">Apple Battle</div>
+                
+                <div class="volume-control-mini" style="display:flex; align-items:center; gap:5px; margin-right:10px; background: rgba(255,255,255,0.7); padding: 2px 8px; border-radius: 10px;">
+                    <span style="font-size:12px;">🔊</span>
+                    <input type="range" id="gameVolumeSlider" min="0" max="1" step="0.01" value="0.5" oninput="updateVolume(this.value)" style="width:60px; cursor: pointer;">
+                </div>
+
                 <div class="mode-badge" id="gameModeBadge">MODE</div>
                 <button class="btn btn-danger" style="padding: 5px 10px; font-size: 14px;" onclick="leaveGame()">포기</button>
             </div>
