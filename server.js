@@ -26,8 +26,7 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
         grid.push(Math.floor(Math.random() * 9) + 1);
     }
     
-    // 쉬운 조합 생성 (특수 사과 개수가 0개여도 생성 여부는 설정에 따라야 함)
-    // 시드 고정 모드 등 특수 사과가 0개면 생성하지 않음.
+    // 쉬운 조합 생성
     if (targetGoldCount > 0 && targetSpecialCount > 0) {
         const usedIndices = new Set();
         function getSafePairIndex() {
@@ -46,13 +45,11 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
             return idx;
         }
 
-        // 쉬운 황금 사과 (9, 1)
         const goldIdx = getSafePairIndex();
         grid[goldIdx] = 9;
         grid[goldIdx+1] = 1; 
         golds.push(goldIdx); 
 
-        // 쉬운 독 사과 (9, 1)
         const specialIdx = getSafePairIndex();
         grid[specialIdx] = 9;
         grid[specialIdx+1] = 1;
@@ -90,6 +87,7 @@ io.on('connection', (socket) => {
             goldCount: goldCount,      
             specialCount: specialCount, 
             players: [],
+            bannedNames: [], // [추가] 강퇴된 플레이어 이름 목록
             isPlaying: false,
             timerInterval: null
         };
@@ -100,20 +98,61 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', ({ name, roomCode }) => {
         const room = rooms.get(roomCode);
         if (!room) return socket.emit('error', '방이 없습니다.');
+        
+        // [추가] 강퇴된 플레이어인지 확인
+        if (room.bannedNames.includes(name)) {
+            return socket.emit('error', '강퇴당하여 재입장할 수 없습니다.');
+        }
+
         if (room.players.length >= room.maxPlayers) return socket.emit('error', '방이 꽉 찼습니다.');
         if (room.isPlaying) return socket.emit('error', '이미 게임 중입니다.');
         joinRoomLogic(socket, room, name, false);
     });
 
-    // 판 새로고침 요청 처리
+    // [추가] 강퇴 기능 처리
+    socket.on('kickPlayer', (targetId) => {
+        // 요청자가 방장인지 확인하기 위해 방을 찾음
+        let targetRoom = null;
+        let requester = null;
+
+        // 모든 방을 뒤져서 요청자가 속한 방을 찾음 (효율을 위해 socket.roomCode 등을 저장할 수도 있지만 기존 구조 유지)
+        for (const [code, room] of rooms) {
+            const p = room.players.find(p => p.id === socket.id);
+            if (p) {
+                targetRoom = room;
+                requester = p;
+                break;
+            }
+        }
+
+        if (targetRoom && requester && requester.isHost) {
+            const targetPlayer = targetRoom.players.find(p => p.id === targetId);
+            if (targetPlayer) {
+                // 차단 목록에 추가
+                targetRoom.bannedNames.push(targetPlayer.name);
+                
+                // 강퇴 대상에게 알림
+                io.to(targetId).emit('kicked');
+                
+                // 강제 퇴장 처리 (소켓 연결 끊기 혹은 leave 처리)
+                // handleLeave를 재사용하기 위해 타겟 소켓을 찾아야 함
+                const targetSocket = io.sockets.sockets.get(targetId);
+                if (targetSocket) {
+                    handleLeave(targetSocket, targetRoom.code);
+                } else {
+                    // 소켓을 못 찾을 경우(이미 나감 등) 데이터만 정리
+                    const idx = targetRoom.players.findIndex(p => p.id === targetId);
+                    if(idx !== -1) targetRoom.players.splice(idx, 1);
+                    io.to(targetRoom.code).emit('playersUpdate', targetRoom.players);
+                }
+            }
+        }
+    });
+
     socket.on('requestGridRegen', (roomCode) => {
         const room = rooms.get(roomCode);
         if (!room) return;
-        
-        // 현재 방의 설정대로 새 그리드 생성 (시드 고정 모드면 사용 안함 or 동일하게? 실력전이니 개별 리젠은 이상할 수 있으나 룰상 교착상태면 해야 함)
-        // 시드 고정이라도 더이상 깰 게 없으면 새 판을 줘야 하므로 로직 유지.
         const data = generateGridData(room.goldCount, room.specialCount);
-        
         socket.emit('gridRegenerated', {
             grid: data.grid,
             specials: data.specials,
@@ -127,22 +166,18 @@ io.on('connection', (socket) => {
         
         room.isPlaying = true;
         
-        // [시드 고정 모드 처리]
         let commonData = null;
         if (room.mode === 'fixedseed') {
-            room.timeLimit = 120; // 2분 고정
-            room.goldCount = 0;   // 특수 사과 없음
+            room.timeLimit = 120; 
+            room.goldCount = 0;   
             room.specialCount = 0;
-            // 공통 그리드 생성
             commonData = generateGridData(0, 0);
         }
 
         let time = room.timeLimit;
         
         room.players.forEach(p => {
-            // 시드 고정이면 공통 데이터 사용, 아니면 개별 생성
             const data = (room.mode === 'fixedseed') ? commonData : generateGridData(room.goldCount, room.specialCount);
-            
             p.score = 0;
             p.isDead = false;
             io.to(p.id).emit('gameStarted', { 
@@ -157,7 +192,6 @@ io.on('connection', (socket) => {
 
         room.timerInterval = setInterval(() => {
             if(!room.isPlaying) { clearInterval(room.timerInterval); return; }
-            
             time--;
             io.to(roomCode).emit('timerUpdate', time);
 

@@ -133,44 +133,10 @@ function showJoinRoom() {
     playTitleBGM(); 
 }
 
-// [수정] 모드에 따른 UI 제어
 function toggleTimeSelect() {
     const mode = document.getElementById('gameMode').value;
     const timeGroup = document.getElementById('timeSelectGroup');
-    const timeSelect = document.getElementById('timeLimit');
-    const goldInput = document.getElementById('goldCount');
-    const specialInput = document.getElementById('specialCount');
-    
-    if (mode === 'fixedseed') {
-        // 시드 고정: 시간 2분 고정, 특수 사과 0개, 입력 비활성화
-        timeSelect.value = "120";
-        timeSelect.disabled = true;
-        
-        goldInput.value = 0;
-        goldInput.disabled = true;
-        document.getElementById('goldVal').textContent = '0';
-        
-        specialInput.value = 0;
-        specialInput.disabled = true;
-        document.getElementById('specialVal').textContent = '0';
-        
-        timeGroup.style.display = 'block'; // 시간은 보여주되 비활성화
-    } else {
-        // 다른 모드: 입력 활성화
-        timeSelect.disabled = false;
-        goldInput.disabled = false;
-        specialInput.disabled = false;
-        
-        // 값이 0이면 기본값으로 복구 (편의성)
-        if (goldInput.value == 0) { 
-            goldInput.value = 3; document.getElementById('goldVal').textContent = '3';
-        }
-        if (specialInput.value == 0) {
-            specialInput.value = 10; document.getElementById('specialVal').textContent = '10';
-        }
-        
-        timeGroup.style.display = mode === 'timeattack' ? 'block' : 'none';
-    }
+    timeGroup.style.display = mode === 'timeattack' ? 'block' : 'none';
 }
 
 /* --- 방 관리 --- */
@@ -210,6 +176,13 @@ function leaveGame() {
 }
 function startGame() { socket.emit('startGame', gameState.roomCode); }
 
+// [추가] 강퇴 요청 함수
+function kickPlayer(targetId) {
+    if (confirm("이 플레이어를 강퇴하시겠습니까? (이 방에 재입장 불가)")) {
+        socket.emit('kickPlayer', targetId);
+    }
+}
+
 function resetGameEffects() {
     if(gameState.hintTimer) {
         clearTimeout(gameState.hintTimer);
@@ -231,11 +204,30 @@ function setupSocketEvents() {
     
     socket.on('playersUpdate', (players) => {
         gameState.players = players;
+        
+        // 내 정보 갱신 (호스트 여부 등)
+        const me = players.find(p => p.id === gameState.myId);
+        if(me) gameState.isHost = me.isHost;
+
         updateWaitingRoom(players);
+        
         if(gameState.isPlaying) updatePlayerPanels();
         
         const cntEl = document.getElementById('playerCount');
         if(cntEl) cntEl.textContent = `${players.length}/${gameState.maxPlayers}`;
+        
+        // 대기실 시작 버튼 표시 여부
+        if(!gameState.isPlaying) {
+            document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
+        }
+    });
+
+    // [추가] 강퇴 당했을 때 이벤트 처리
+    socket.on('kicked', () => {
+        alert("방장에 의해 강퇴당했습니다.");
+        gameState.roomCode = null;
+        gameState.isHost = false;
+        showMenu();
     });
 
     socket.on('gameStarted', ({ mode, grid, specials, golds }) => {
@@ -324,7 +316,6 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
     hideAllScreens();
     document.getElementById('waitingRoom').classList.remove('hidden');
     document.getElementById('waitingCode').textContent = roomCode;
-    // 대기실 텍스트 표시
     let modeText = '<타임어택 모드>';
     if (mode === 'deathmatch') modeText = '<데스매치 모드>';
     else if (mode === 'fixedseed') modeText = '<시드 고정 (실력전)>';
@@ -335,11 +326,16 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
 
 function updateWaitingRoom(players) {
     const div = document.getElementById('waitingPlayers');
-    div.innerHTML = players.map(p => 
-        `<div style="padding:10px; border:1px solid #ccc; background:white; font-size:14px;">
-            ${p.name} ${p.isHost ? '👑' : ''}
-        </div>`
-    ).join('');
+    // [수정] 방장일 경우 다른 플레이어 옆에 강퇴 버튼 표시
+    div.innerHTML = players.map(p => {
+        let kickBtn = '';
+        if (gameState.isHost && p.id !== gameState.myId) {
+            kickBtn = `<button class="btn-kick" onclick="kickPlayer('${p.id}')">강퇴</button>`;
+        }
+        return `<div style="padding:10px; border:1px solid #ccc; background:white; font-size:14px; display:flex; justify-content:center; align-items:center;">
+            ${p.name} ${p.isHost ? '👑' : ''} ${kickBtn}
+        </div>`;
+    }).join('');
 }
 
 /* --- 게임 로직 --- */
@@ -354,7 +350,6 @@ function initGameUI() {
     document.body.classList.remove('invisible-cursor');
     document.querySelector('.grid-wrapper').style.opacity = '1';
     
-    // 모드 뱃지 텍스트
     let badgeText = 'TIME ATTACK';
     if(gameState.mode === 'deathmatch') badgeText = 'DEATH MATCH';
     else if(gameState.mode === 'fixedseed') badgeText = 'FIXED SEED';
