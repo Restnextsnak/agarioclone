@@ -213,7 +213,7 @@ io.on('connection', (socket) => {
             }
 
             // 데스매치: 30초마다 탈락 로직 실행
-            if(room.mode === 'deathmatch' && room.elapsedTime > 0 && room.elapsedTime % 30 === 0) {
+            if(room.mode === 'deathmatch' && room.elapsedTime > 0 && room.elapsedTime % 60 === 0) {
                 processDeathmatch(room);
             }
 
