@@ -390,8 +390,10 @@ function setupSocketEvents() {
         
         if(gameState.isPlaying) updatePlayerPanels();
         
+        // [수정됨] 관전자를 제외한 실제 플레이어 수만 표시
+        const activePlayers = players.filter(p => !p.isSpectator);
         const cntEl = document.getElementById('playerCount');
-        if(cntEl) cntEl.textContent = `${players.length}/${gameState.maxPlayers}`;
+        if(cntEl) cntEl.textContent = `${activePlayers.length}/${gameState.maxPlayers}`;
         
         if(!gameState.isPlaying) {
             document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
@@ -1118,7 +1120,8 @@ function setTarget(id) {
 
     if(gameState.isDead) {
         const target = gameState.players.find(p => p.id === id);
-        if(target && !target.isDead) {
+        // [수정됨] 관전자는 관전 대상에서 제외
+        if(target && !target.isDead && !target.isSpectator) {
             gameState.spectatingTargetId = id;
             renderSpectatorGrid(target);
             showStatusMessage(`관전 중: ${target.name}`);
@@ -1128,7 +1131,8 @@ function setTarget(id) {
 }
 
 function spectateFirstSurvivor() {
-    const survivors = gameState.players.filter(p => p.id !== gameState.myId && !p.isDead);
+    // [수정됨] 관전자는 제외하고 생존자만 필터링
+    const survivors = gameState.players.filter(p => p.id !== gameState.myId && !p.isDead && !p.isSpectator);
     if(survivors.length > 0) {
         gameState.spectatingTargetId = survivors[0].id;
         renderSpectatorGrid(survivors[0]);
@@ -1201,7 +1205,8 @@ function showStatusMessage(text) {
 /* --- 패널 렌더링 최적화 --- */
 function createPlayerPanelsInitial() {
     const myId = gameState.myId;
-    const others = gameState.players.filter(p => p.id !== myId);
+    // [수정됨] 관전자는 플레이어 패널에 표시하지 않음
+    const others = gameState.players.filter(p => p.id !== myId && !p.isSpectator);
     
     const leftSidebar = document.getElementById('leftSidebar');
     const rightSidebar = document.getElementById('rightSidebar');
@@ -1217,7 +1222,8 @@ function createPlayerPanelsInitial() {
 
 function updatePlayerPanels() {
     const myId = gameState.myId;
-    const others = gameState.players.filter(p => p.id !== myId);
+    // [수정됨] 관전자는 플레이어 패널에 표시하지 않음
+    const others = gameState.players.filter(p => p.id !== myId && !p.isSpectator);
     
     const currentPanelCount = document.querySelectorAll('.player-panel').length;
     if(currentPanelCount !== others.length) {

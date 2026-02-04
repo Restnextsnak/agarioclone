@@ -305,18 +305,19 @@ io.on('connection', (socket) => {
 
         let time = room.timeLimit;
         
-        // [수정됨] 모든 플레이어의 게임 상태를 초기화 (isDead 포함)
+        // [수정됨] 모든 플레이어의 게임 상태를 초기화
         room.players.forEach(p => {
             p.score = 0;
             p.lastScoreTime = Date.now();
-            p.isDead = false;
             
-            // [신규] 관전자는 게임에 참여하지 않음
+            // [신규] 관전자는 죽은 상태로 시작 (생존자 카운트에서 제외)
             if (p.isSpectator) {
+                p.isDead = true; // 관전자는 죽은 상태
                 io.to(p.id).emit('spectatorModeStarted', {
                     mode: room.mode
                 });
             } else {
+                p.isDead = false; // 일반 플레이어는 살아있는 상태
                 const data = (room.mode === 'fixedseed') ? commonData : generateGridData(room.goldCount, room.specialCount);
                 io.to(p.id).emit('gameStarted', { 
                     mode: room.mode,
