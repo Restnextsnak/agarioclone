@@ -466,9 +466,15 @@ function enterWaitingRoom({ roomCode, maxPlayers, mode, privateCode }) {
         codeEl.textContent = '****';
         codeEl.style.cursor = 'pointer';
         codeEl.title = '클릭하여 코드 복사';
-        codeEl.onclick = () => {
-            copyToClipboard(roomCode);
-            alert(`방 코드가 복사되었습니다: ${roomCode}`);
+        codeEl.onclick = (e) => {
+            e.stopPropagation(); // 이벤트 버블링 방지
+            copyToClipboardSilent(roomCode);
+            // 코드 옆에 작은 체크마크 표시
+            const originalText = codeEl.textContent;
+            codeEl.textContent = '****  ✓';
+            setTimeout(() => {
+                codeEl.textContent = originalText;
+            }, 1000);
         };
     } else {
         codeEl.textContent = roomCode;
@@ -1259,4 +1265,17 @@ function fallbackCopy(text) {
         console.error('복사 실패:', err);
     }
     document.body.removeChild(textArea);
+}
+
+// [신규] 클립보드 복사 함수 (팝업 없음 - 방 코드용)
+function copyToClipboardSilent(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            // 조용히 복사
+        }).catch(err => {
+            fallbackCopy(text);
+        });
+    } else {
+        fallbackCopy(text);
+    }
 }
