@@ -8,6 +8,11 @@ app.use(express.static(__dirname));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 const rooms = new Map();
+const matchmakingQueue = {
+    players: [],
+    timer: null,
+    roomCreated: false
+};
 
 function generateRoomCode() {
     let code;
@@ -77,7 +82,91 @@ function generateGridData(targetGoldCount, targetSpecialCount) {
 io.on('connection', (socket) => {
     console.log(`[Connect] ${socket.id}`);
 
-    socket.on('createRoom', ({ name, maxPlayers, mode, timeLimit, goldCount, specialCount }) => {
+    // [신규] 채팅 메시지 전송
+    socket.on('chatMessage', ({ roomCode, message }) => {
+        const room = rooms.get(roomCode);
+        if (!room) return;
+        
+        const player = room.players.find(p => p.id === socket.id);
+        if (player) {
+            io.to(roomCode).emit('chatMessage', {
+                playerName: player.name,
+                message: message,
+                timestamp: Date.now()
+            });
+        }
+    });
+
+    // [신규] 마우스 이동 브로드캐스트
+    socket.on('mouseMove', ({ roomCode, x, y }) => {
+        const room = rooms.get(roomCode);
+        if (!room) return;
+        
+        socket.broadcast.to(roomCode).emit('playerMouseMove', {
+            playerId: socket.id,
+            x: x,
+            y: y
+        });
+    });
+
+    // [신규] 온라인 매칭 참가
+    socket.on('joinMatchmaking', ({ name }) => {
+        // 이미 큐에 있는지 확인
+        if (matchmakingQueue.players.find(p => p.id === socket.id)) {
+            return socket.emit('error', '이미 매칭 대기 중입니다.');
+        }
+
+        const player = {
+            id: socket.id,
+            name: name,
+            joinedAt: Date.now()
+        };
+
+        matchmakingQueue.players.push(player);
+        
+        // 매칭 정보 전송
+        io.emit('matchmakingUpdate', {
+            count: matchmakingQueue.players.length,
+            players: matchmakingQueue.players.map(p => ({ name: p.name }))
+        });
+
+        console.log(`[Matchmaking] ${name} joined. Total: ${matchmakingQueue.players.length}`);
+
+        // 30명이 모이면 즉시 시작
+        if (matchmakingQueue.players.length >= 30) {
+            startMatchmakingGame();
+        }
+        // 2명 이상이면 1분 타이머 시작 (한 번만)
+        else if (matchmakingQueue.players.length >= 2 && !matchmakingQueue.timer && !matchmakingQueue.roomCreated) {
+            matchmakingQueue.timer = setTimeout(() => {
+                if (matchmakingQueue.players.length >= 2) {
+                    startMatchmakingGame();
+                }
+                matchmakingQueue.timer = null;
+            }, 60000); // 60초
+        }
+    });
+
+    // [신규] 매칭 취소
+    socket.on('leaveMatchmaking', () => {
+        const index = matchmakingQueue.players.findIndex(p => p.id === socket.id);
+        if (index !== -1) {
+            matchmakingQueue.players.splice(index, 1);
+            
+            io.emit('matchmakingUpdate', {
+                count: matchmakingQueue.players.length,
+                players: matchmakingQueue.players.map(p => ({ name: p.name }))
+            });
+
+            // 1명 이하면 타이머 취소
+            if (matchmakingQueue.players.length < 2 && matchmakingQueue.timer) {
+                clearTimeout(matchmakingQueue.timer);
+                matchmakingQueue.timer = null;
+            }
+        }
+    });
+
+    socket.on('createRoom', ({ name, maxPlayers, mode, timeLimit, goldCount, specialCount, privateCode }) => {
         const roomCode = generateRoomCode();
         const room = {
             code: roomCode,
@@ -85,7 +174,8 @@ io.on('connection', (socket) => {
             mode: mode,
             timeLimit: timeLimit || 180,
             goldCount: goldCount,      
-            specialCount: specialCount, 
+            specialCount: specialCount,
+            privateCode: privateCode || false, // 비공개 코드 여부
             players: [],
             bannedNames: [], 
             isPlaying: false,
@@ -109,8 +199,10 @@ io.on('connection', (socket) => {
         joinRoomLogic(socket, room, name, false);
     });
 
-    // [수정됨] 강퇴 로직 개선 - 독립적인 처리로 안정성 확보
+    // [수정됨] 강퇴 로직 개선 - 안정성 확보
     socket.on('kickPlayer', (targetId) => {
+        console.log(`[Kick Request] From: ${socket.id}, Target: ${targetId}`);
+        
         let targetRoom = null;
         let requester = null;
 
@@ -125,31 +217,45 @@ io.on('connection', (socket) => {
         }
 
         // 2. 권한 확인 및 대상 존재 확인
-        if (targetRoom && requester && requester.isHost) {
-            const targetIndex = targetRoom.players.findIndex(p => p.id === targetId);
-            
-            if (targetIndex !== -1) {
-                const targetPlayer = targetRoom.players[targetIndex];
-
-                // 3. 밴 목록 추가
-                targetRoom.bannedNames.push(targetPlayer.name);
-                
-                // 4. 대상에게 강퇴 알림 전송
-                io.to(targetId).emit('kicked');
-
-                // 5. 플레이어 목록에서 제거
-                targetRoom.players.splice(targetIndex, 1);
-
-                // 6. 대상 소켓을 방에서 내보냄 (Socket.io 룸 처리)
-                const targetSocket = io.sockets.sockets.get(targetId);
-                if (targetSocket) {
-                    targetSocket.leave(targetRoom.code);
-                }
-
-                // 7. 남은 인원에게 업데이트 전송
-                io.to(targetRoom.code).emit('playersUpdate', targetRoom.players);
-            }
+        if (!targetRoom) {
+            console.log(`[Kick Failed] Room not found for requester: ${socket.id}`);
+            return;
         }
+
+        if (!requester || !requester.isHost) {
+            console.log(`[Kick Failed] Requester is not host: ${socket.id}`);
+            return socket.emit('error', '방장만 강퇴할 수 있습니다.');
+        }
+
+        const targetIndex = targetRoom.players.findIndex(p => p.id === targetId);
+        
+        if (targetIndex === -1) {
+            console.log(`[Kick Failed] Target not found: ${targetId}`);
+            return socket.emit('error', '대상을 찾을 수 없습니다.');
+        }
+
+        const targetPlayer = targetRoom.players[targetIndex];
+
+        // 3. 밴 목록 추가
+        targetRoom.bannedNames.push(targetPlayer.name);
+        console.log(`[Kick] Banned name: ${targetPlayer.name}`);
+        
+        // 4. 대상에게 강퇴 알림 전송
+        io.to(targetId).emit('kicked', { reason: '방장에 의해 강퇴되었습니다.' });
+
+        // 5. 플레이어 목록에서 제거
+        targetRoom.players.splice(targetIndex, 1);
+
+        // 6. 대상 소켓을 방에서 내보냄 (Socket.io 룸 처리)
+        const targetSocket = io.sockets.sockets.get(targetId);
+        if (targetSocket) {
+            targetSocket.leave(targetRoom.code);
+        }
+
+        // 7. 남은 인원에게 업데이트 전송
+        io.to(targetRoom.code).emit('playersUpdate', targetRoom.players);
+        
+        console.log(`[Kick Success] ${targetPlayer.name} kicked from room ${targetRoom.code}`);
     });
 
     socket.on('requestGridRegen', (roomCode) => {
@@ -278,7 +384,24 @@ io.on('connection', (socket) => {
     });
 
     socket.on('leaveRoom', (roomCode) => handleLeave(socket, roomCode));
+    
     socket.on('disconnect', () => {
+        // 매칭 큐에서 제거
+        const queueIndex = matchmakingQueue.players.findIndex(p => p.id === socket.id);
+        if (queueIndex !== -1) {
+            matchmakingQueue.players.splice(queueIndex, 1);
+            io.emit('matchmakingUpdate', {
+                count: matchmakingQueue.players.length,
+                players: matchmakingQueue.players.map(p => ({ name: p.name }))
+            });
+            
+            if (matchmakingQueue.players.length < 2 && matchmakingQueue.timer) {
+                clearTimeout(matchmakingQueue.timer);
+                matchmakingQueue.timer = null;
+            }
+        }
+        
+        // 방에서 제거
         rooms.forEach((room, code) => {
             if(room.players.find(p => p.id === socket.id)) handleLeave(socket, code);
         });
@@ -298,9 +421,139 @@ function joinRoomLogic(socket, room, name, isHost) {
     socket.join(room.code);
     
     socket.emit(isHost ? 'roomCreated' : 'roomJoined', { 
-        roomCode: room.code, maxPlayers: room.maxPlayers, mode: room.mode 
+        roomCode: room.code, 
+        maxPlayers: room.maxPlayers, 
+        mode: room.mode,
+        privateCode: room.privateCode || false
     });
     io.to(room.code).emit('playersUpdate', room.players);
+}
+
+// [신규] 매칭 게임 시작
+function startMatchmakingGame() {
+    if (matchmakingQueue.players.length < 2) return;
+    if (matchmakingQueue.roomCreated) return; // 이미 방 생성됨
+    
+    matchmakingQueue.roomCreated = true;
+    
+    const roomCode = generateRoomCode();
+    const room = {
+        code: roomCode,
+        maxPlayers: 30,
+        mode: 'deathmatch',
+        timeLimit: 999999,
+        goldCount: 5,
+        specialCount: 20,
+        privateCode: false,
+        players: [],
+        bannedNames: [],
+        isPlaying: false,
+        timerInterval: null,
+        elapsedTime: 0,
+        isMatchmaking: true
+    };
+    
+    rooms.set(roomCode, room);
+    
+    // 큐의 모든 플레이어를 방에 추가
+    matchmakingQueue.players.forEach((qPlayer, index) => {
+        const player = {
+            id: qPlayer.id,
+            name: qPlayer.name,
+            isHost: index === 0, // 첫 번째 플레이어가 방장
+            score: 0,
+            lastScoreTime: Date.now(),
+            isDead: false
+        };
+        
+        room.players.push(player);
+        
+        const socket = io.sockets.sockets.get(qPlayer.id);
+        if (socket) {
+            socket.join(roomCode);
+            socket.emit('matchmakingGameStarted', {
+                roomCode: roomCode,
+                maxPlayers: room.maxPlayers,
+                mode: room.mode
+            });
+        }
+    });
+    
+    io.to(roomCode).emit('playersUpdate', room.players);
+    
+    console.log(`[Matchmaking] Game created: ${roomCode}, Players: ${room.players.length}`);
+    
+    // 큐 초기화
+    matchmakingQueue.players = [];
+    matchmakingQueue.roomCreated = false;
+    if (matchmakingQueue.timer) {
+        clearTimeout(matchmakingQueue.timer);
+        matchmakingQueue.timer = null;
+    }
+    
+    // 모든 클라이언트에게 매칭 큐 리셋 알림
+    io.emit('matchmakingUpdate', {
+        count: 0,
+        players: []
+    });
+    
+    // 3초 후 자동으로 게임 시작
+    setTimeout(() => {
+        if (room.players.length > 0) {
+            startGameForRoom(room);
+        }
+    }, 3000);
+}
+
+// [신규] 방 게임 시작 (매칭용)
+function startGameForRoom(room) {
+    room.isPlaying = true;
+    room.elapsedTime = 0;
+    
+    let time = room.timeLimit;
+    
+    room.players.forEach(p => {
+        const data = generateGridData(room.goldCount, room.specialCount);
+        p.score = 0;
+        p.lastScoreTime = Date.now();
+        p.isDead = false;
+        io.to(p.id).emit('gameStarted', { 
+            mode: room.mode,
+            grid: data.grid,
+            specials: data.specials,
+            golds: data.golds
+        });
+    });
+
+    io.to(room.code).emit('playersUpdate', room.players);
+
+    room.timerInterval = setInterval(() => {
+        if(!room.isPlaying) { clearInterval(room.timerInterval); return; }
+        
+        time--;
+        room.elapsedTime++;
+
+        if(room.mode !== 'deathmatch') {
+            io.to(room.code).emit('timerUpdate', time);
+        }
+
+        if(room.mode === 'deathmatch' && room.elapsedTime > 0 && room.elapsedTime % 60 === 0) {
+            processDeathmatch(room);
+        }
+
+        if(room.mode !== 'deathmatch' && time <= 0) {
+            clearInterval(room.timerInterval);
+            finishGame(room);
+        }
+        
+        if(room.mode === 'deathmatch') {
+            const survivors = room.players.filter(p => !p.isDead);
+            if(survivors.length <= 1) {
+                clearInterval(room.timerInterval);
+                finishGame(room);
+            }
+        }
+    }, 1000);
 }
 
 function handleLeave(socket, roomCode) {

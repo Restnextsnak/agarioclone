@@ -7,6 +7,7 @@ let gameState = {
     maxPlayers: 2,
     mode: 'timeattack',
     timeLimit: 180,
+    privateCode: false, // 비공개 코드 여부
     
     // 내 게임 데이터
     grid: [], 
@@ -32,7 +33,14 @@ let gameState = {
     skillCount: 0,
     isUsingSkill: false,
     hintTimer: null,
-    cursorTimer: null 
+    cursorTimer: null,
+    
+    // 마우스 추적
+    playerMousePositions: {}, // { playerId: { x, y } }
+    
+    // 매칭
+    isInMatchmaking: false,
+    matchmakingCount: 0
 };
 
 // 모드 설명 데이터 추가
@@ -123,7 +131,7 @@ function playSFX() {
 
 /* --- 화면 전환 --- */
 function hideAllScreens() {
-    ['menuScreen', 'createRoomScreen', 'joinRoomScreen', 'waitingRoom', 'gameScreen'].forEach(id => {
+    ['menuScreen', 'createRoomScreen', 'joinRoomScreen', 'matchmakingScreen', 'waitingRoom', 'gameScreen'].forEach(id => {
         document.getElementById(id).classList.add('hidden');
     });
 }
@@ -140,12 +148,17 @@ function showCreateRoom() {
     hideAllScreens(); 
     document.getElementById('createRoomScreen').classList.remove('hidden'); 
     playTitleBGM(); 
-    updateModeDescription(); // 모드 설명 초기화
+    updateModeDescription();
 }
 function showJoinRoom() { 
     hideAllScreens(); 
     document.getElementById('joinRoomScreen').classList.remove('hidden'); 
     playTitleBGM(); 
+}
+function showMatchmaking() {
+    hideAllScreens();
+    document.getElementById('matchmakingScreen').classList.remove('hidden');
+    playTitleBGM();
 }
 
 // 모드 설명 및 타임 셀렉트 토글
@@ -178,12 +191,13 @@ function createRoom() {
     
     const goldCount = parseInt(document.getElementById('goldCount').value);
     const specialCount = parseInt(document.getElementById('specialCount').value);
+    const privateCode = document.getElementById('privateCode').checked;
 
     if(!name) return alert('이름을 입력하세요!');
     
     gameState.playerName = name;
     gameState.isHost = true;
-    socket.emit('createRoom', { name, maxPlayers, mode, timeLimit, goldCount, specialCount });
+    socket.emit('createRoom', { name, maxPlayers, mode, timeLimit, goldCount, specialCount, privateCode });
 }
 
 function joinRoom() {
@@ -193,6 +207,61 @@ function joinRoom() {
     
     gameState.playerName = name;
     socket.emit('joinRoom', { name, roomCode });
+}
+
+// [신규] 온라인 매칭
+function joinMatchmaking() {
+    const name = document.getElementById('matchmakingName').value.trim();
+    if(!name) return alert('이름을 입력하세요!');
+    
+    gameState.playerName = name;
+    gameState.isInMatchmaking = true;
+    socket.emit('joinMatchmaking', { name });
+    
+    document.getElementById('matchmakingJoinBtn').style.display = 'none';
+    document.getElementById('matchmakingCancelBtn').style.display = 'inline-block';
+}
+
+function leaveMatchmaking() {
+    socket.emit('leaveMatchmaking');
+    gameState.isInMatchmaking = false;
+    showMenu();
+}
+
+// [신규] 채팅
+function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    
+    if (!message || !gameState.roomCode) return;
+    
+    socket.emit('chatMessage', {
+        roomCode: gameState.roomCode,
+        message: message
+    });
+    
+    input.value = '';
+}
+
+function displayChatMessage(playerName, message) {
+    const chatMessages = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-message';
+    msgDiv.innerHTML = `<strong>${playerName}:</strong> ${escapeHtml(message)}`;
+    
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // 50개 이상 메시지는 오래된 것 제거
+    while (chatMessages.children.length > 50) {
+        chatMessages.removeChild(chatMessages.firstChild);
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function leaveRoom() { socket.emit('leaveRoom', gameState.roomCode); showMenu(); }
@@ -227,6 +296,37 @@ function setupSocketEvents() {
     socket.on('roomCreated', (data) => enterWaitingRoom(data));
     socket.on('roomJoined', (data) => enterWaitingRoom(data));
     
+    // [신규] 채팅 메시지 수신
+    socket.on('chatMessage', ({ playerName, message }) => {
+        displayChatMessage(playerName, message);
+    });
+    
+    // [신규] 마우스 이동 수신
+    socket.on('playerMouseMove', ({ playerId, x, y }) => {
+        gameState.playerMousePositions[playerId] = { x, y };
+        updatePlayerMouseCursor(playerId, x, y);
+    });
+    
+    // [신규] 매칭 업데이트
+    socket.on('matchmakingUpdate', ({ count, players }) => {
+        gameState.matchmakingCount = count;
+        const statusEl = document.getElementById('matchmakingStatus');
+        if (statusEl) {
+            statusEl.textContent = `대기 중인 플레이어: ${count}명`;
+        }
+        
+        const listEl = document.getElementById('matchmakingPlayersList');
+        if (listEl) {
+            listEl.innerHTML = players.map(p => `<div>${p.name}</div>`).join('');
+        }
+    });
+    
+    // [신규] 매칭 게임 시작
+    socket.on('matchmakingGameStarted', (data) => {
+        gameState.isInMatchmaking = false;
+        enterWaitingRoom(data);
+    });
+    
     socket.on('playersUpdate', (players) => {
         gameState.players = players;
         
@@ -246,8 +346,8 @@ function setupSocketEvents() {
         }
     });
 
-    socket.on('kicked', () => {
-        alert("방장에 의해 강퇴당했습니다.");
+    socket.on('kicked', ({ reason }) => {
+        alert(reason || "방장에 의해 강퇴당했습니다.");
         gameState.roomCode = null;
         gameState.isHost = false;
         showMenu();
@@ -354,18 +454,39 @@ function setupSocketEvents() {
     socket.on('error', (msg) => alert(msg));
 }
 
-function enterWaitingRoom({ roomCode, maxPlayers, mode }) {
+function enterWaitingRoom({ roomCode, maxPlayers, mode, privateCode }) {
     gameState.roomCode = roomCode;
     gameState.maxPlayers = maxPlayers;
+    gameState.privateCode = privateCode || false;
     hideAllScreens();
     document.getElementById('waitingRoom').classList.remove('hidden');
-    document.getElementById('waitingCode').textContent = roomCode;
+    
+    const codeEl = document.getElementById('waitingCode');
+    if (gameState.privateCode) {
+        codeEl.textContent = '****';
+        codeEl.style.cursor = 'pointer';
+        codeEl.title = '클릭하여 코드 복사';
+        codeEl.onclick = () => {
+            copyToClipboard(roomCode);
+            alert(`방 코드가 복사되었습니다: ${roomCode}`);
+        };
+    } else {
+        codeEl.textContent = roomCode;
+        codeEl.style.cursor = 'default';
+        codeEl.title = '';
+        codeEl.onclick = null;
+    }
+    
     let modeText = '<타임어택 모드>';
     if (mode === 'deathmatch') modeText = '<데스매치 모드>';
     else if (mode === 'fixedseed') modeText = '<시드 고정 (실력전)>';
     
     document.getElementById('waitingModeDisplay').textContent = modeText;
     document.getElementById('startGameBtn').style.display = gameState.isHost ? 'inline-block' : 'none';
+    
+    // 채팅 초기화
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) chatMessages.innerHTML = '';
 }
 
 function updateWaitingRoom(players) {
@@ -472,6 +593,64 @@ function renderMyGrid() {
     container.ontouchstart = onInputStart;
     container.ontouchmove = onInputMove;
     document.ontouchend = onInputEnd;
+    
+    // [신규] 마우스 이동 추적 (게임 중일 때만)
+    if (gameState.isPlaying && !gameState.isDead) {
+        container.onmousemove = (e) => {
+            onInputMove(e);
+            throttledSendMousePosition(e);
+        };
+    }
+}
+
+// [신규] 마우스 위치 전송 (쓰로틀링)
+let mouseThrottle = null;
+function throttledSendMousePosition(e) {
+    if (mouseThrottle) return;
+    
+    mouseThrottle = setTimeout(() => {
+        if (gameState.roomCode && gameState.isPlaying && !gameState.isDead) {
+            const container = document.getElementById('grid');
+            const rect = container.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            
+            socket.emit('mouseMove', {
+                roomCode: gameState.roomCode,
+                x: x,
+                y: y
+            });
+        }
+        mouseThrottle = null;
+    }, 100); // 100ms마다 전송
+}
+
+// [신규] 다른 플레이어 마우스 커서 업데이트
+function updatePlayerMouseCursor(playerId, x, y) {
+    if (!gameState.isDead || gameState.spectatingTargetId !== playerId) return;
+    
+    let cursor = document.getElementById(`mouse-cursor-${playerId}`);
+    if (!cursor) {
+        cursor = document.createElement('div');
+        cursor.id = `mouse-cursor-${playerId}`;
+        cursor.className = 'player-mouse-cursor';
+        document.body.appendChild(cursor);
+    }
+    
+    const container = document.getElementById('grid');
+    const rect = container.getBoundingClientRect();
+    
+    cursor.style.left = `${rect.left + x * rect.width}px`;
+    cursor.style.top = `${rect.top + y * rect.height}px`;
+    cursor.style.display = 'block';
+}
+
+// [신규] 마우스 커서 숨기기
+function hidePlayerMouseCursor(playerId) {
+    const cursor = document.getElementById(`mouse-cursor-${playerId}`);
+    if (cursor) {
+        cursor.style.display = 'none';
+    }
 }
 
 function renderSpectatorGrid(targetPlayer) {
@@ -1052,4 +1231,32 @@ function playAttackAnimation(fromId, toId) {
 
     flying.style.transform = `translate(${endX - startX}px, ${endY - startY}px)`;
     setTimeout(() => { flying.remove(); }, 800);
+}
+
+// [신규] 클립보드 복사 함수
+function copyToClipboard(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            // 성공
+        }).catch(err => {
+            fallbackCopy(text);
+        });
+    } else {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+        document.execCommand('copy');
+    } catch (err) {
+        console.error('복사 실패:', err);
+    }
+    document.body.removeChild(textArea);
 }

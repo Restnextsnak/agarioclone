@@ -203,6 +203,24 @@
             font-size: 8vmin; font-weight: bold; color: #ff0000; width: 100%; text-align: center;
             text-shadow: 2px 2px 0 #fff; pointer-events: none; z-index: 500; display: none;
         }
+        
+        /* [신규] 채팅 메시지 스타일 */
+        .chat-message {
+            margin-bottom: 5px; font-size: 13px; line-height: 1.4;
+        }
+        .chat-message strong {
+            color: #d84315;
+        }
+        
+        /* [신규] 플레이어 마우스 커서 */
+        .player-mouse-cursor {
+            position: fixed; width: 20px; height: 20px;
+            background: rgba(255, 0, 0, 0.5); border: 2px solid #ff0000;
+            border-radius: 50%; pointer-events: none; z-index: 1000;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+            display: none;
+        }
 
         @media (max-width: 1024px) {
             .game-main { flex-direction: column; }
@@ -223,6 +241,7 @@
             <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; max-width: 300px;">
                 <button class="btn btn-primary" onclick="showCreateRoom()" style="width: 100%;">방 만들기</button>
                 <button class="btn btn-secondary" onclick="showJoinRoom()" style="width: 100%;">방 참가하기</button>
+                <button class="btn btn-primary" onclick="showMatchmaking()" style="width: 100%; background: #9c27b0;">🌐 온라인 매칭</button>
                 
                 <div class="volume-control" style="width: 100%; justify-content: center; display:flex; align-items:center; gap:10px; background:#fff; padding:5px; border-radius:10px;">
                     <span>🔊</span>
@@ -295,6 +314,14 @@
                         <option value="300">5분</option>
                     </select>
                 </div>
+                
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="privateCode" style="width: auto; cursor: pointer;">
+                        <span>방 코드 비공개 (클릭하여 복사 가능)</span>
+                    </label>
+                </div>
+                
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
                     <button class="btn btn-primary" onclick="createRoom()" style="flex: 1;">생성</button>
                     <button class="btn btn-danger" onclick="showMenu()">취소</button>
@@ -320,11 +347,54 @@
             </div>
         </div>
 
+        <div id="matchmakingScreen" class="hidden">
+            <div class="waiting-room">
+                <h2 style="color: #9c27b0;">🌐 온라인 매칭</h2>
+                <div style="font-size: 20px; margin: 20px 0; color: #666;">
+                    <p>데스매치 모드 | 황금 사과 5개 | 독 사과 20개</p>
+                    <p style="margin-top: 10px;">30명 모이면 즉시 시작 | 2명 이상 시 1분 후 자동 시작</p>
+                </div>
+                
+                <div class="room-setup" style="max-width: 400px;">
+                    <div class="form-group">
+                        <label>플레이어 이름</label>
+                        <input type="text" id="matchmakingName" placeholder="이름 입력" maxlength="8" />
+                    </div>
+                    
+                    <div style="text-align: center; margin: 20px 0;">
+                        <div id="matchmakingStatus" style="font-size: 18px; font-weight: bold; color: #9c27b0; margin-bottom: 10px;">
+                            대기 중인 플레이어: 0명
+                        </div>
+                        
+                        <div id="matchmakingPlayersList" style="max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                            <!-- 플레이어 목록이 여기 표시됩니다 -->
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button class="btn btn-primary" id="matchmakingJoinBtn" onclick="joinMatchmaking()" style="width: 100%; background: #9c27b0;">매칭 참가</button>
+                        <button class="btn btn-danger" id="matchmakingCancelBtn" onclick="leaveMatchmaking()" style="width: 100%; display: none;">매칭 취소</button>
+                        <button class="btn btn-danger" onclick="showMenu()" style="width: 100%;">돌아가기</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="waitingRoom" class="hidden">
             <div class="waiting-room">
                 <h2 style="color: #d84315;">대기실</h2>
                 <div style="font-size: 50px; font-weight: bold; margin: 15px 0;" id="waitingCode">0000</div>
                 <div id="waitingModeDisplay" style="font-weight: bold; color: #555; margin-bottom: 20px;"></div>
+                
+                <!-- [신규] 채팅 UI -->
+                <div style="width: 100%; max-width: 500px; margin-bottom: 15px;">
+                    <div id="chatMessages" style="height: 150px; overflow-y: auto; background: #f5f5f5; border: 2px solid #000; border-radius: 5px; padding: 10px; margin-bottom: 5px; text-align: left;"></div>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="text" id="chatInput" placeholder="채팅 입력..." style="flex: 1; padding: 8px; border: 2px solid #000; border-radius: 5px;" onkeypress="if(event.key==='Enter')sendChatMessage()">
+                        <button class="btn btn-primary" onclick="sendChatMessage()" style="padding: 8px 15px;">전송</button>
+                    </div>
+                </div>
+                
                 <div id="waitingPlayers" style="display: flex; flex-direction: column; gap: 5px; max-width: 400px; margin-top: 10px; width: 100%;"></div>
                 <div style="margin-top: 20px; width: 100%; max-width: 300px;">
                     <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" style="display: none; width: 100%; margin-bottom: 10px;">게임 시작</button>
