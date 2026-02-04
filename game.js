@@ -243,18 +243,65 @@ function sendChatMessage() {
     input.value = '';
 }
 
+// [신규] 게임 중 채팅
+function sendGameChatMessage() {
+    const input = document.getElementById('gameChatInput');
+    const message = input.value.trim();
+    
+    if (!message || !gameState.roomCode) return;
+    
+    socket.emit('chatMessage', {
+        roomCode: gameState.roomCode,
+        message: message
+    });
+    
+    input.value = '';
+}
+
 function displayChatMessage(playerName, message) {
+    // 대기실 채팅
     const chatMessages = document.getElementById('chatMessages');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'chat-message';
-    msgDiv.innerHTML = `<strong>${playerName}:</strong> ${escapeHtml(message)}`;
+    if (chatMessages && chatMessages.offsetParent !== null) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'chat-message';
+        msgDiv.innerHTML = `<strong>${playerName}:</strong> ${escapeHtml(message)}`;
+        
+        chatMessages.appendChild(msgDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // 50개 이상 메시지는 오래된 것 제거
+        while (chatMessages.children.length > 50) {
+            chatMessages.removeChild(chatMessages.firstChild);
+        }
+    }
     
-    chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // 50개 이상 메시지는 오래된 것 제거
-    while (chatMessages.children.length > 50) {
-        chatMessages.removeChild(chatMessages.firstChild);
+    // 게임 중 채팅
+    const gameChatMessages = document.getElementById('gameChatMessages');
+    if (gameChatMessages && gameChatMessages.offsetParent !== null) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'game-chat-message';
+        msgDiv.innerHTML = `<strong>${playerName}:</strong> ${escapeHtml(message)}`;
+        
+        gameChatMessages.appendChild(msgDiv);
+        gameChatMessages.scrollTop = gameChatMessages.scrollHeight;
+        
+        // 10개 이상 메시지는 오래된 것 제거
+        while (gameChatMessages.children.length > 10) {
+            gameChatMessages.removeChild(gameChatMessages.firstChild);
+        }
+        
+        // 5초 후 메시지 페이드 아웃
+        setTimeout(() => {
+            if (msgDiv.parentElement) {
+                msgDiv.style.opacity = '0';
+                msgDiv.style.transition = 'opacity 0.5s';
+                setTimeout(() => {
+                    if (msgDiv.parentElement) {
+                        msgDiv.remove();
+                    }
+                }, 500);
+            }
+        }, 5000);
     }
 }
 
@@ -274,6 +321,11 @@ function leaveGame() {
     }
 }
 function startGame() { socket.emit('startGame', gameState.roomCode); }
+
+// [신규] 관전 모드 토글
+function toggleSpectatorMode() {
+    socket.emit('toggleSpectator', gameState.roomCode);
+}
 
 // window.kickPlayer로 이동됨 (상단 참조)
 
@@ -370,6 +422,23 @@ function setupSocketEvents() {
         initGameUI();
     });
 
+    // [신규] 관전자 모드로 게임 시작
+    socket.on('spectatorModeStarted', ({ mode }) => {
+        gameState.mode = mode;
+        gameState.isDead = true; // 관전자는 죽은 상태로 시작
+        gameState.isPlaying = true;
+        gameState.spectatingTargetId = null;
+        
+        hideAllScreens();
+        document.getElementById('gameScreen').classList.remove('hidden');
+        initGameUI();
+        
+        // 관전할 첫 번째 플레이어 찾기
+        setTimeout(() => {
+            spectateFirstSurvivor();
+        }, 500);
+    });
+
     socket.on('gridRegenerated', ({ grid, specials, golds }) => {
         if(gameState.isDead) return;
 
@@ -444,7 +513,12 @@ function setupSocketEvents() {
 
     socket.on('gameEnded', ({ winner, scores }) => {
         gameState.isPlaying = false;
-        resetGameEffects(); 
+        resetGameEffects();
+        
+        // [수정됨] 모든 마우스 커서 DOM 요소 직접 제거
+        document.querySelectorAll('.player-mouse-cursor').forEach(el => el.remove());
+        gameState.playerMousePositions = {}; // 마우스 위치 초기화
+        
         let msg = winner ? `우승: ${winner.name}!` : "게임 종료";
         msg += "\n\n[순위]\n" + scores.map((s,i) => `${i+1}. ${s.name} (${s.score}점)`).join("\n");
         alert(msg);
@@ -502,10 +576,27 @@ function updateWaitingRoom(players) {
         if (gameState.isHost && p.id !== gameState.myId) {
             kickBtn = `<button class="btn-kick" onclick="kickPlayer('${p.id}')">강퇴</button>`;
         }
+        
+        // 관전자 표시
+        const spectatorBadge = p.isSpectator ? ' 👁️' : '';
+        
         return `<div style="padding:10px; border:1px solid #ccc; background:white; font-size:14px; display:flex; justify-content:center; align-items:center;">
-            ${p.name} ${p.isHost ? '👑' : ''} ${kickBtn}
+            ${p.name} ${p.isHost ? '👑' : ''}${spectatorBadge} ${kickBtn}
         </div>`;
     }).join('');
+    
+    // [신규] 관전 버튼 표시 (방장에게만)
+    const spectatorBtn = document.getElementById('spectatorBtn');
+    if (spectatorBtn && gameState.isHost) {
+        spectatorBtn.style.display = 'inline-block';
+        const me = players.find(p => p.id === gameState.myId);
+        if (me) {
+            spectatorBtn.textContent = me.isSpectator ? '👁️ 게임 참가' : '👁️ 관전 모드';
+            spectatorBtn.className = me.isSpectator ? 'btn btn-secondary' : 'btn btn-primary';
+        }
+    } else if (spectatorBtn) {
+        spectatorBtn.style.display = 'none';
+    }
 }
 
 /* --- 게임 로직 --- */

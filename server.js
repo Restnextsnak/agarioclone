@@ -258,6 +258,19 @@ io.on('connection', (socket) => {
         console.log(`[Kick Success] ${targetPlayer.name} kicked from room ${targetRoom.code}`);
     });
 
+    // [신규] 관전 모드 토글
+    socket.on('toggleSpectator', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room || room.isPlaying) return; // 게임 중에는 불가능
+        
+        const player = room.players.find(p => p.id === socket.id);
+        if (player) {
+            player.isSpectator = !player.isSpectator;
+            console.log(`[Spectator Toggle] ${player.name}: ${player.isSpectator}`);
+            io.to(roomCode).emit('playersUpdate', room.players);
+        }
+    });
+
     socket.on('requestGridRegen', (roomCode) => {
         const room = rooms.get(roomCode);
         if (!room) return;
@@ -294,16 +307,24 @@ io.on('connection', (socket) => {
         
         // [수정됨] 모든 플레이어의 게임 상태를 초기화 (isDead 포함)
         room.players.forEach(p => {
-            const data = (room.mode === 'fixedseed') ? commonData : generateGridData(room.goldCount, room.specialCount);
             p.score = 0;
-            p.lastScoreTime = Date.now(); // 동점자 처리를 위한 시간 기록 초기화
-            p.isDead = false; // 죽음 상태 초기화
-            io.to(p.id).emit('gameStarted', { 
-                mode: room.mode,
-                grid: data.grid,
-                specials: data.specials,
-                golds: data.golds
-            });
+            p.lastScoreTime = Date.now();
+            p.isDead = false;
+            
+            // [신규] 관전자는 게임에 참여하지 않음
+            if (p.isSpectator) {
+                io.to(p.id).emit('spectatorModeStarted', {
+                    mode: room.mode
+                });
+            } else {
+                const data = (room.mode === 'fixedseed') ? commonData : generateGridData(room.goldCount, room.specialCount);
+                io.to(p.id).emit('gameStarted', { 
+                    mode: room.mode,
+                    grid: data.grid,
+                    specials: data.specials,
+                    golds: data.golds
+                });
+            }
         });
 
         // [수정됨] 초기화된 플레이어 목록을 클라이언트에 전송
@@ -415,7 +436,8 @@ function joinRoomLogic(socket, room, name, isHost) {
         isHost, 
         score: 0, 
         lastScoreTime: Date.now(), 
-        isDead: false 
+        isDead: false,
+        isSpectator: false // [신규] 관전자 상태 추가
     };
     room.players.push(player);
     socket.join(room.code);
@@ -463,7 +485,8 @@ function startMatchmakingGame() {
             isHost: index === 0, // 첫 번째 플레이어가 방장
             score: 0,
             lastScoreTime: Date.now(),
-            isDead: false
+            isDead: false,
+            isSpectator: false // [신규] 관전자 상태 추가
         };
         
         room.players.push(player);
