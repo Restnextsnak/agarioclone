@@ -186,11 +186,12 @@ io.on('connection', (socket) => {
 
         let time = room.timeLimit;
         
+        // [수정됨] 모든 플레이어의 게임 상태를 초기화 (isDead 포함)
         room.players.forEach(p => {
             const data = (room.mode === 'fixedseed') ? commonData : generateGridData(room.goldCount, room.specialCount);
             p.score = 0;
             p.lastScoreTime = Date.now(); // 동점자 처리를 위한 시간 기록 초기화
-            p.isDead = false;
+            p.isDead = false; // 죽음 상태 초기화
             io.to(p.id).emit('gameStarted', { 
                 mode: room.mode,
                 grid: data.grid,
@@ -199,6 +200,7 @@ io.on('connection', (socket) => {
             });
         });
 
+        // [수정됨] 초기화된 플레이어 목록을 클라이언트에 전송
         io.to(roomCode).emit('playersUpdate', room.players);
 
         room.timerInterval = setInterval(() => {
@@ -257,23 +259,19 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('attack', ({ roomCode, targetId, type }) => {
+    // [수정됨] 공격 타겟 기능 제거 - 항상 랜덤 타겟으로 공격
+    socket.on('attack', ({ roomCode, type }) => {
         const room = rooms.get(roomCode);
         if(!room) return;
         
         const attacker = room.players.find(p => p.id === socket.id);
-        let target;
-
-        if(!targetId || targetId === socket.id) {
-            const potentialTargets = room.players.filter(p => p.id !== socket.id && !p.isDead);
-            if(potentialTargets.length > 0) {
-                target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-            }
-        } else {
-            target = room.players.find(p => p.id === targetId);
-        }
-
-        if(attacker && target && !target.isDead) {
+        
+        // 랜덤으로 타겟 선택 (자신 제외, 생존자만)
+        const potentialTargets = room.players.filter(p => p.id !== socket.id && !p.isDead);
+        
+        if(attacker && potentialTargets.length > 0) {
+            const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+            
             io.to(target.id).emit('attacked', { type: type, attackerName: attacker.name });
             io.to(roomCode).emit('visualAttack', { from: attacker.id, to: target.id });
         }

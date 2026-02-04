@@ -20,8 +20,7 @@ let gameState = {
     time: 180,
     isPlaying: false,
     players: [],
-    targetId: null, 
-    spectatingTargetId: null,
+    spectatingTargetId: null, // 관전 타겟만 유지
     
     // 드래그 로직
     isSelecting: false,
@@ -262,8 +261,7 @@ function setupSocketEvents() {
         gameState.stones = [];
         gameState.score = 0;
         gameState.isDead = false; 
-        gameState.targetId = null;
-        gameState.spectatingTargetId = null; 
+        gameState.spectatingTargetId = null; // 관전 타겟만 초기화
         gameState.skillCount = 0; 
         gameState.isUsingSkill = false;
         
@@ -838,6 +836,7 @@ function broadcastMyState() {
     });
 }
 
+// [수정됨] 공격 타겟 선택 기능 제거 - 관전 기능만 유지
 function setTarget(id) {
     if(id === gameState.myId) return;
 
@@ -848,10 +847,8 @@ function setTarget(id) {
             renderSpectatorGrid(target);
             showStatusMessage(`관전 중: ${target.name}`);
         }
-    } else {
-        gameState.targetId = id;
-        updatePlayerPanels();
     }
+    // 생존 상태에서는 타겟 선택 기능을 제거함
 }
 
 function spectateFirstSurvivor() {
@@ -864,11 +861,11 @@ function spectateFirstSurvivor() {
     }
 }
 
+// [수정됨] 공격 타겟 선택 기능 제거 - 서버에서 랜덤 처리
 function triggerAttack() {
     const type = Math.floor(Math.random() * 3) + 1;
     socket.emit('attack', {
         roomCode: gameState.roomCode,
-        targetId: gameState.targetId,
         type: type
     });
 }
@@ -993,8 +990,8 @@ function updatePanelContent(el, p) {
     if(p.isDead) el.classList.add('dead');
     else el.classList.remove('dead');
     
-    if(p.id === gameState.targetId) el.classList.add('target');
-    else el.classList.remove('target');
+    // [수정됨] 공격 타겟 시각적 표시 제거
+    el.classList.remove('target');
 
     const nameEl = el.querySelector('.name');
     const scoreEl = el.querySelector('.score');
