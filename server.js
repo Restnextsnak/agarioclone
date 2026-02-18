@@ -285,6 +285,7 @@ io.on('connection', (socket) => {
     socket.on('startGame', (roomCode) => {
         const room = rooms.get(roomCode);
         if(!room || room.players[0].id !== socket.id) return;
+        if(room.isMatchmaking) return; // 매칭방은 자동 시작 전용
         
         room.isPlaying = true;
         room.elapsedTime = 0; // 초기화
@@ -498,7 +499,8 @@ function startMatchmakingGame() {
             socket.emit('matchmakingGameStarted', {
                 roomCode: roomCode,
                 maxPlayers: room.maxPlayers,
-                mode: room.mode
+                mode: room.mode,
+                isMatchmaking: true
             });
         }
     });
